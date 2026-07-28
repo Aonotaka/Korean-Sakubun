@@ -23,73 +23,258 @@ const streakCount = document.getElementById('streakCount');
 const reviewBtn = document.getElementById('reviewBtn');
 const reviewList = document.getElementById('reviewList');
 
+function fillTemplate(template, replacements) {
+  return template.replace(/\{(\w+)\}/g, (_, key) => replacements[key] ?? '');
+}
+
+function buildBeginnerBank(count) {
+  const templates = [
+    '明日、{place}に行きます。',
+    '今、{drink}を飲んでいます。',
+    '私は{place}で{activity}します。',
+    '今日は{weather}です。',
+    '弟は{place}へ行きます。',
+    '私は{food}を食べます。',
+    '彼は{place}で{activity2}します。',
+    'この{item}は{quality}です。',
+  ];
+
+  const places = ['学校', '駅', 'スーパー', '公園', '図書館', '病院', 'カフェ', 'コンビニ', '映画館', '海'];
+  const placeKorean = ['학교', '역', '슈퍼마켓', '공원', '도서관', '병원', '카페', '편의점', '영화관', '바다'];
+  const drinks = ['コーヒー', 'お茶', 'ジュース', '水', 'ミルク'];
+  const drinkKorean = ['커피', '차', '주스', '물', '우유'];
+  const activities = ['勉強', '買い物', '散歩', '昼ごはんを食べ', '読書'];
+  const activityKorean = ['공부해', '장봐', '산책해', '점심을 먹어', '독서해'];
+  const activityVariants = ['勉強', '会話', '料理', '運動', '宿題'];
+  const activityVariantKorean = ['공부해', '대화해', '요리해', '운동해', '숙제해'];
+  const weathers = ['雨', '晴れ', '曇り', '雪', '風が強い'];
+  const weatherKorean = ['비가 와요', '맑아요', '흐려요', '눈이 와요', '바람이 세요'];
+  const foods = ['パン', 'ラーメン', '寿司', 'カレー', 'アイス'];
+  const foodKorean = ['빵', '라면', '초밥', '카레', '아이스크림'];
+  const items = ['ケーキ', '本', '椅子', 'シャツ', '傘'];
+  const itemKorean = ['케이크', '책', '의자', '셔츠', '우산'];
+  const qualities = ['おいしい', '新しい', '大きい', '小さい', '便利です'];
+  const qualityKorean = ['맛있어요', '새로워요', '커요', '작아요', '편리해요'];
+
+  const bank = [];
+  for (let i = 0; i < count; i += 1) {
+    const template = templates[i % templates.length];
+    const replacements = {
+      place: places[(i + 1) % places.length],
+      placeKo: placeKorean[(i + 1) % placeKorean.length],
+      drink: drinks[(i + 2) % drinks.length],
+      drinkKo: drinkKorean[(i + 2) % drinkKorean.length],
+      activity: activities[(i + 3) % activities.length],
+      activityKo: activityKorean[(i + 3) % activityKorean.length],
+      activity2: activityVariants[(i + 4) % activityVariants.length],
+      activity2Ko: activityVariantKorean[(i + 4) % activityVariantKorean.length],
+      weather: weathers[(i + 5) % weathers.length],
+      weatherKo: weatherKorean[(i + 5) % weatherKorean.length],
+      food: foods[(i + 6) % foods.length],
+      foodKo: foodKorean[(i + 6) % foodKorean.length],
+      item: items[(i + 7) % items.length],
+      itemKo: itemKorean[(i + 7) % itemKorean.length],
+      quality: qualities[(i + 8) % qualities.length],
+      qualityKo: qualityKorean[(i + 8) % qualityKorean.length],
+    };
+
+    const prompt = fillTemplate(template, replacements);
+    const answer = fillTemplate(template.replace(/に|で|へ|は|を|です|します|行きます|飲んでいます|食べます/g, ''), replacements);
+    const hint = '基本文型を意識して、助詞や語尾を確認しましょう。';
+    bank.push({ prompt, answer: template.includes('今日は') ? `오늘은 ${replacements.weatherKo}.` : template.includes('今、') ? `지금 ${replacements.drinkKo}를 마시고 있어요.` : template.includes('明日、') ? `내일 ${replacements.placeKo}에 가요.` : template.includes('私は') && template.includes('食べ') ? `저는 ${replacements.foodKo}를 먹어요.` : template.includes('この') ? `이 ${replacements.itemKo}는 ${replacements.qualityKo}.` : `저는 ${replacements.placeKo}에서 ${replacements.activityKo}요.`, hint });
+  }
+
+  return bank;
+}
+
+function buildIntermediateBank(count) {
+  const templates = [
+    '昨日、{place}で{activity}しました。',
+    'もし{condition}なら、{action}します。',
+    '最近、{topic}が好きです。',
+    '風が{quality}ので、{result}。',
+    'この店では、{item}が{quality2}です。',
+    '会議は{time}から始まります。',
+    'この道を{direction}に曲がると、{place2}があります。',
+    '試験の前に、{activity2}しました。',
+  ];
+
+  const places = ['図書館', 'スーパー', '駅前', '病院', 'カフェ'];
+  const placeKorean = ['도서관', '슈퍼마켓', '역 앞', '병원', '카페'];
+  const activities = ['本を借り', '料理を作り', '友達と話し', '勉強し', '相談し'];
+  const activityKorean = ['책을 빌려', '요리를 만들고', '친구와 이야기해', '공부해', '상담해'];
+  const conditions = ['時間があれば', '雨が降れば', 'お金があれば'];
+  const conditionKorean = ['시간이 있으면', '비가 오면', '돈이 있으면'];
+  const actions = ['電話します', '散歩します', '映画を見ます'];
+  const actionKorean = ['전화할게요', '산책할게요', '영화를 볼게요'];
+  const topics = ['韓国ドラマ', '韓国料理', '旅行', '音楽'];
+  const topicKorean = ['한국 드라마', '한국 음식', '여행', '음악'];
+  const qualities = ['強い', '弱い', '長い'];
+  const qualityKorean = ['세서', '약해서', '길어서'];
+  const results = ['外に出られません', '早めに帰ります', '予定を変更します'];
+  const resultKorean = ['밖에 나갈 수 없어요', '일찍 돌아가요', '일정을 바꿔요'];
+  const items = ['料理', 'ケーキ', 'コーヒー'];
+  const itemKorean = ['음식', '케이크', '커피'];
+  const quality2 = ['おいしい', '高い', '人気です'];
+  const quality2Korean = ['맛있어요', '비싸요', '인기 있어요'];
+  const times = ['十時', '午後三時', '九時'];
+  const timeKorean = ['열 시', '오후 세 시', '아홉 시'];
+  const directions = ['右', '左', 'まっすぐ'];
+  const directionKorean = ['오른쪽', '왼쪽', '곧장'];
+  const place2 = ['駅', '郵便局', '交差点'];
+  const place2Korean = ['역', '우체국', '교차로'];
+  const activity2 = ['しっかり復習', '資料を整理', '予定を確認'];
+  const activity2Korean = ['열심히 복습', '자료를 정리', '일정을 확인'];
+
+  const bank = [];
+  for (let i = 0; i < count; i += 1) {
+    const template = templates[i % templates.length];
+    const replacements = {
+      place: places[(i + 1) % places.length],
+      placeKo: placeKorean[(i + 1) % placeKorean.length],
+      activity: activities[(i + 2) % activities.length],
+      activityKo: activityKorean[(i + 2) % activityKorean.length],
+      condition: conditions[(i + 3) % conditions.length],
+      conditionKo: conditionKorean[(i + 3) % conditionKorean.length],
+      action: actions[(i + 4) % actions.length],
+      actionKo: actionKorean[(i + 4) % actionKorean.length],
+      topic: topics[(i + 5) % topics.length],
+      topicKo: topicKorean[(i + 5) % topicKorean.length],
+      quality: qualities[(i + 6) % qualities.length],
+      qualityKo: qualityKorean[(i + 6) % qualityKorean.length],
+      result: results[(i + 7) % results.length],
+      resultKo: resultKorean[(i + 7) % resultKorean.length],
+      item: items[(i + 8) % items.length],
+      itemKo: itemKorean[(i + 8) % itemKorean.length],
+      quality2: quality2[(i + 9) % quality2.length],
+      quality2Ko: quality2Korean[(i + 9) % quality2Korean.length],
+      time: times[(i + 10) % times.length],
+      timeKo: timeKorean[(i + 10) % timeKorean.length],
+      direction: directions[(i + 11) % directions.length],
+      directionKo: directionKorean[(i + 11) % directionKorean.length],
+      place2: place2[(i + 12) % place2.length],
+      place2Ko: place2Korean[(i + 12) % place2Korean.length],
+      activity2: activity2[(i + 13) % activity2.length],
+      activity2Ko: activity2Korean[(i + 13) % activity2Korean.length],
+    };
+
+    const prompt = fillTemplate(template, replacements);
+    const answer = fillTemplate(template.includes('最近') ? `요즘 ${replacements.topicKo}를 좋아해요.` : template.includes('風が') ? `바람이 ${replacements.qualityKo} ${replacements.resultKo}.` : template.includes('会議は') ? `회의는 ${replacements.timeKo}부터 시작해요.` : template.includes('この道') ? `이 길을 ${replacements.directionKo}으로 가면 ${replacements.place2Ko}가 있어요.` : template.includes('試験の前') ? `${replacements.activity2Ko}했어요.` : `어제 ${replacements.placeKo}에서 ${replacements.activityKo}했어요.`, replacements);
+    const hint = '接続詞や時制の違いに注目しましょう。';
+    bank.push({ prompt, answer, hint });
+  }
+
+  return bank;
+}
+
+function buildAdvancedBank(count) {
+  const templates = [
+    '彼は、自分の{noun}を{adverb}に{verb}ことができた。',
+    'この問題は、{comparison}より{status}だった。',
+    '会議の前に、{noun2}を{verb2}しておいた。',
+    '彼女は自分の{noun3}を{adverb2}と伝えることができた。',
+    'この結果は、{expectation}以上に{status2}だった。',
+    '彼はその{noun4}を{verb3}ずに、すぐに{action}した。',
+    '彼らは長い間、同じ{noun5}に向かって{verb4}してきた。',
+    'その{noun6}は、{context}に大きな{impact}をもたらす可能性がある。',
+  ];
+
+  const nouns = ['失敗', '意見', '責任', '考え方', '判断'];
+  const nounKorean = ['실수', '의견', '책임', '생각 방식', '판단'];
+  const adverbs = ['素直', '冷静', '正直'];
+  const adverbKorean = ['솔직하게', '냉정하게', '정직하게'];
+  const verbs = ['認める', '受け止める', '整理する'];
+  const verbKorean = ['인정할', '받아들일', '정리할'];
+  const comparisons = ['予想', '思ったこと', '当初の見込み'];
+  const comparisonKorean = ['예상', '생각했던 것', '당초 예상'];
+  const statuses = ['難しかった', '簡単だった', '複雑だった'];
+  const statusKorean = ['어려웠다', '쉽었다', '복잡했다'];
+  const noun2 = ['重要な資料', '提出書類', '連絡事項'];
+  const noun2Korean = ['중요한 자료', '제출 서류', '연락 사항'];
+  const verb2 = ['確認', '整理', '印刷'];
+  const verb2Korean = ['확인', '정리', '인쇄'];
+  const noun3 = ['意見', '考え', '立場'];
+  const noun3Korean = ['의견', '생각', '입장'];
+  const adverb2 = ['はっきり', '丁寧に', '率直に'];
+  const adverb2Korean = ['분명하게', '정중하게', '솔직하게'];
+  const expectations = ['予想', '期待', '想定'];
+  const expectationKorean = ['예상', '기대', '가정'];
+  const status2 = ['良かった', '悪かった', '適切だった'];
+  const status2Korean = ['좋았다', '나빴다', '적절했다'];
+  const noun4 = ['機会', '約束', '責任'];
+  const noun4Korean = ['기회', '약속', '책임'];
+  const verb3 = ['逃す', '破る', '放棄する'];
+  const verb3Korean = ['놓치지', '지키지', '포기하지'];
+  const actions = ['行動に移した', '対応した', '判断した'];
+  const actionKorean = ['행동에 옮겼다', '대응했다', '판단했다'];
+  const noun5 = ['目標', '価値観', '理想'];
+  const noun5Korean = ['목표', '가치관', '이상'];
+  const verb4 = ['努力', '前進', '挑戦'];
+  const verb4Korean = ['노력해', '전진해', '도전해'];
+  const noun6 = ['制度', '政策', '提案'];
+  const noun6Korean = ['제도', '정책', '제안'];
+  const contexts = ['学問の分野', '社会全体', '地域社会'];
+  const contextKorean = ['학문의 분야', '사회 전체', '지역 사회'];
+  const impacts = ['影響', '変化', '変革'];
+  const impactKorean = ['영향', '변화', '변혁'];
+
+  const bank = [];
+  for (let i = 0; i < count; i += 1) {
+    const template = templates[i % templates.length];
+    const replacements = {
+      noun: nouns[(i + 1) % nouns.length],
+      nounKo: nounKorean[(i + 1) % nounKorean.length],
+      adverb: adverbs[(i + 2) % adverbs.length],
+      adverbKo: adverbKorean[(i + 2) % adverbKorean.length],
+      verb: verbs[(i + 3) % verbs.length],
+      verbKo: verbKorean[(i + 3) % verbKorean.length],
+      comparison: comparisons[(i + 4) % comparisons.length],
+      comparisonKo: comparisonKorean[(i + 4) % comparisonKorean.length],
+      status: statuses[(i + 5) % statuses.length],
+      statusKo: statusKorean[(i + 5) % statusKorean.length],
+      noun2: noun2[(i + 6) % noun2.length],
+      noun2Ko: noun2Korean[(i + 6) % noun2Korean.length],
+      verb2: verb2[(i + 7) % verb2.length],
+      verb2Ko: verb2Korean[(i + 7) % verb2Korean.length],
+      noun3: noun3[(i + 8) % noun3.length],
+      noun3Ko: noun3Korean[(i + 8) % noun3Korean.length],
+      adverb2: adverb2[(i + 9) % adverb2.length],
+      adverb2Ko: adverb2Korean[(i + 9) % adverb2Korean.length],
+      expectation: expectations[(i + 10) % expectations.length],
+      expectationKo: expectationKorean[(i + 10) % expectationKorean.length],
+      status2: status2[(i + 11) % status2.length],
+      status2Ko: status2Korean[(i + 11) % status2Korean.length],
+      noun4: noun4[(i + 12) % noun4.length],
+      noun4Ko: noun4Korean[(i + 12) % noun4Korean.length],
+      verb3: verb3[(i + 13) % verb3.length],
+      verb3Ko: verb3Korean[(i + 13) % verb3Korean.length],
+      action: actions[(i + 14) % actions.length],
+      actionKo: actionKorean[(i + 14) % actionKorean.length],
+      noun5: noun5[(i + 15) % noun5.length],
+      noun5Ko: noun5Korean[(i + 15) % noun5Korean.length],
+      verb4: verb4[(i + 16) % verb4.length],
+      verb4Ko: verb4Korean[(i + 16) % verb4Korean.length],
+      noun6: noun6[(i + 17) % noun6.length],
+      noun6Ko: noun6Korean[(i + 17) % noun6Korean.length],
+      context: contexts[(i + 18) % contexts.length],
+      contextKo: contextKorean[(i + 18) % contextKorean.length],
+      impact: impacts[(i + 19) % impacts.length],
+      impactKo: impactKorean[(i + 19) % impactKorean.length],
+    };
+
+    const prompt = fillTemplate(template, replacements);
+    const answer = fillTemplate(template.includes('会議の前') ? `${replacements.noun2Ko}를 ${replacements.verb2Ko}해 두었다.` : template.includes('この結果') ? `이 결과는 ${replacements.expectationKo} 이상으로 ${replacements.status2Ko}.` : template.includes('彼らは') ? `그들은 오랫동안 같은 ${replacements.noun5Ko}를 향해 ${replacements.verb4Ko}해 왔다.` : template.includes('その') && template.includes('可能性') ? `그 ${replacements.noun6Ko}는 ${replacements.contextKo}에 큰 ${replacements.impactKo}를 가져올 가능성이 있다.` : `그는 자신의 ${replacements.nounKo}를 ${replacements.adverbKo}하게 ${replacements.verbKo} 수 있었다.`, replacements);
+    const hint = '複雑な語順と接続表現を意識して練習しましょう。';
+    bank.push({ prompt, answer, hint });
+  }
+
+  return bank;
+}
+
 const questionBank = {
-  beginner: [
-    { prompt: '明日、友達と映画を見に行きます。', answer: '내일 친구랑 영화를 보러 가요.', hint: '「友達と」は 친구랑、「映画」は 영화、「行く」は 가요' },
-    { prompt: '今、コーヒーを飲んでいます。', answer: '지금 커피를 마시고 있어요.', hint: '「今」は 지금、「飲んでいます」は 마시고 있어요' },
-    { prompt: '私は日本語を勉強しています。', answer: '저는 일본어를 공부하고 있어요.', hint: '「私は」は 저는、「勉強する」は 공부하다' },
-    { prompt: '私は毎日朝ごはんを食べます。', answer: '저는 매일 아침밥을 먹어요.', hint: '「毎日」は 매일、「朝ごはん」は 아침밥' },
-    { prompt: '今日は雨です。', answer: '오늘은 비가 와요.', hint: '「今日は」は 오늘은、「雨」は 비' },
-    { prompt: '弟は学校へ行きます。', answer: '동생은 학교에 가요.', hint: '「弟」は 동생、「学校」は 학교' },
-    { prompt: '私はパンを買います。', answer: '저는 빵을 사요.', hint: '「買います」は 사요' },
-    { prompt: '彼は韓国語が上手です。', answer: '그는 한국어를 잘해요.', hint: '「上手です」は 잘해요' },
-    { prompt: '私はお茶を飲みます。', answer: '저는 차를 마셔요.', hint: '「お茶」は 차' },
-    { prompt: '私は駅に行きます。', answer: '저는 역에 가요.', hint: '「駅」は 역' },
-    { prompt: '今、何をしていますか。', answer: '지금 무엇을 하고 있나요?', hint: '「何を」は 무엇을' },
-    { prompt: 'このケーキはおいしいです。', answer: '이 케이크는 맛있어요.', hint: '「おいしい」は 맛있어요' },
-    { prompt: '私は友達に会います。', answer: '저는 친구를 만나요.', hint: '「会います」は 만나요' },
-    { prompt: '彼女は図書館で勉強します。', answer: '그녀는 도서관에서 공부해요.', hint: '「図書館」は 도서관' },
-    { prompt: '私は毎晩寝ます。', answer: '저는 매일 밤 자요.', hint: '「毎晩」は 매일 밤' },
-    { prompt: '明日は休みです。', answer: '내일은 쉬어요.', hint: '「休み」は 쉬다' },
-    { prompt: '私は新しい本を読みます。', answer: '저는 새 책을 읽어요.', hint: '「新しい」は 새' },
-    { prompt: '今日、買い物に行きます。', answer: '오늘 장 보러 가요.', hint: '「買い物」は 장' },
-    { prompt: '私はお腹が空きました。', answer: '저는 배가 고파요.', hint: '「お腹が空いた」は 배가 고프다' },
-    { prompt: '彼は一人で帰ります。', answer: '그는 혼자 돌아가요.', hint: '「一人で」は 혼자' }
-  ],
-  intermediate: [
-    { prompt: '昨日、図書館で本を借りました。', answer: '어제 도서관에서 책을 빌렸어요.', hint: '「借りました」は 빌렸어요、「図書館」は 도서관' },
-    { prompt: 'もし時間があれば、電話します。', answer: '시간이 있으면 전화할게요.', hint: '「もし」は -면、「時間があれば」は 시간이 있으면' },
-    { prompt: '最近、韓国ドラマが好きです。', answer: '요즘 한국 드라마를 좋아해요.', hint: '「最近」は 요즘、「好きです」は 좋아해요' },
-    { prompt: '風が強くて、外に出られません。', answer: '바람이 세서 밖에 나갈 수 없어요.', hint: '「風が強い」は 바람이 세다' },
-    { prompt: 'この店では、いつもおいしい料理が食べられます。', answer: '이 가게에서는 항상 맛있는 음식을 먹을 수 있어요.', hint: '「料理」は 음식' },
-    { prompt: '彼は昨日、早めに寝ました。', answer: '그는 어제 일찍 잤어요.', hint: '「早めに」は 일찍' },
-    { prompt: '私は部屋を少し整理しました。', answer: '저는 방을 조금 정리했어요.', hint: '「整理する」は 정리하다' },
-    { prompt: 'もうすぐ雨が止みそうです。', answer: '곧 비가 그칠 것 같아요.', hint: '「止みそう」は 그칠 것 같다' },
-    { prompt: '会議は十時から始まります。', answer: '회의는 열 시부터 시작해요.', hint: '「会議」は 회의' },
-    { prompt: 'この道を右に曲がると、駅があります。', answer: '이 길을 오른쪽으로 가면 역이 있어요.', hint: '「曲がる」は 돌아가다' },
-    { prompt: '娘はまだ小学生です。', answer: '딸은 아직 초등학생이에요.', hint: '「小学生」は 초등학생' },
-    { prompt: '私は昨日、友達とランチをしました。', answer: '저는 어제 친구와 점심을 먹었어요.', hint: '「ランチ」は 점심' },
-    { prompt: '試験の前に、しっかり復習しました。', answer: '시험 전에 열심히 복습했어요.', hint: '「復習する」は 복습하다' },
-    { prompt: '彼女はよく早起きします。', answer: '그녀는 자주 일찍 일어나요.', hint: '「早起きする」は 일찍 일어나다' },
-    { prompt: 'この問題は少し難しいです。', answer: '이 문제는 조금 어려워요.', hint: '「少し」は 조금' },
-    { prompt: '私はこのレストランが好きです。', answer: '저는 이 식당이 좋아요.', hint: '「レストラン」は 식당' },
-    { prompt: '来週、両親に会いに行きます。', answer: '다음 주에 부모님을 만나러 가요.', hint: '「両親」は 부모님' },
-    { prompt: '病院に行く前に、薬を飲みました。', answer: '병원에 가기 전에 약을 먹었어요.', hint: '「病院」は 병원' },
-    { prompt: '私は英語を勉強し始めました。', answer: '저는 영어를 공부하기 시작했어요.', hint: '「勉強し始める」は 공부하기 시작하다' },
-    { prompt: '日本語の文法は少し難しいです。', answer: '일본어 문법은 조금 어려워요.', hint: '「文法」は 문법' }
-  ],
-  advanced: [
-    { prompt: '彼は、自分の失敗を素直に認めることができた。', answer: '그는 자신의 실수를 솔직하게 인정할 수 있었다.', hint: '「素直に」は 솔직하게、「認める」は 인정하다' },
-    { prompt: 'この問題は、思ったより難しかった。', answer: '이 문제는 생각보다 어려웠다.', hint: '「思ったより」は 생각보다、「難しかった」は 어려웠다' },
-    { prompt: '会議の前に、重要な資料を確認しておいた。', answer: '회의 전에 중요한 자료를 확인해 두었다.', hint: '「確認しておいた」は 확인해 두었다' },
-    { prompt: '彼女は自分の意見をはっきりと伝えることができた。', answer: '그녀는 자신의 의견을 분명하게 전달할 수 있었다.', hint: '「はっきりと」は 분명하게' },
-    { prompt: 'この結果は、予想以上に良かった。', answer: '이 결과는 예상 이상으로 좋았다.', hint: '「以上に」は 이상으로' },
-    { prompt: '彼はその機会を逃さずに、すぐ行動に移した。', answer: '그는 그 기회를 놓치지 않고 바로 행동에 옮겼다.', hint: '「行動に移す」は 행동에 옮기다' },
-    { prompt: '彼らは長い間、同じ目標に向かって努力してきた。', answer: '그들은 오랫동안 같은 목표를 향해 노력해 왔다.', hint: '「向かって」は 향해' },
-    { prompt: 'この制度は、将来的に大きな変化をもたらす可能性がある。', answer: '이 제도는 장래에 큰 변화를 가져올 가능성이 있다.', hint: '「制度」は 제도' },
-    { prompt: '私たちはその知らせを聞いて、すぐに対応することにした。', answer: '우리는 그 소식을 듣고 바로 대응하기로 했다.', hint: '「対応する」は 대응하다' },
-    { prompt: '彼はその責任を一人で引き受けることはできなかった。', answer: '그는 그 책임을 혼자서 떠맡을 수 없었다.', hint: '「引き受ける」は 떠맡다' },
-    { prompt: '彼女は何度も失敗したにもかかわらず、諦めなかった。', answer: '그녀는 몇 번이나 실패했음에도 포기하지 않았다.', hint: '「にもかかわらず」は ~에도 불구하고' },
-    { prompt: 'その提案は、実現可能性が高いと評価された。', answer: '그 제안은 실현 가능성이 높다고 평가되었다.', hint: '「評価された」は 평가되었다' },
-    { prompt: 'この問題は、単なる知識ではなく、判断力も必要だ。', answer: '이 문제는 단순한 지식이 아니라 판단력도 필요하다.', hint: '「判断力」は 판단력' },
-    { prompt: '彼はその場で冷静に対応し、事態を収拾した。', answer: '그는 그 자리에서 냉정하게 대응해 사태를 수습했다.', hint: '「収拾する」は 수습하다' },
-    { prompt: '私たちはその計画を実行に移す前に、慎重に検討した。', answer: '우리는 그 계획을 실행에 옮기기 전에 신중하게 검토했다.', hint: '「実行に移す」は 실행에 옮기다' },
-    { prompt: 'この発見は、学問の分野に大きな影響を与えた。', answer: '이 발견은 학문의 분야에 큰 영향을 주었다.', hint: '「発見」は 발견' },
-    { prompt: '彼はその約束を守ることができず、後悔した。', answer: '그는 그 약속을 지키지 못해 후회했다.', hint: '「約束を守る」は 약속을 지키다' },
-    { prompt: 'その判断は、当時の状況をよく考慮した結果だった。', answer: '그 판단은 당시 상황을 잘 고려한 결과였다.', hint: '「考慮する」は 고려하다' },
-    { prompt: '私たちは長い議論の末、合意に達した。', answer: '우리는 긴 논의 끝에 합의에 도달했다.', hint: '「議論の末」は 논의 끝에' },
-    { prompt: '彼はそのニュースを聞いて、驚きを隠せなかった。', answer: '그는 그 뉴스를 듣고 놀라움을 숨기지 못했다.', hint: '「驚きを隠せなかった」は 놀라움을 숨기지 못했다' }
-  ]
+  beginner: buildBeginnerBank(200),
+  intermediate: buildIntermediateBank(200),
+  advanced: buildAdvancedBank(200),
 };
 
 let currentQuestions = [];
