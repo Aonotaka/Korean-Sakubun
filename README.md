@@ -52,3 +52,9 @@ PORT=10000
 7. Deploy.
 
 Render will run the Node.js server automatically.
+
+## Live demo
+
+Open the deployed app here:
+
+https://korean-sakubun.onrender.com

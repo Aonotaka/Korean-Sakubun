@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://korean-sakubun.onrender.com/sitemap.xml
