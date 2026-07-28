@@ -1,11 +1,32 @@
-require('dotenv').config();
-
 const express = require('express');
 const path = require('path');
 const { askAi, getProvider } = require('./services/ai');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 3000);
+const isRender = Boolean(process.env.RENDER);
+
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    require('dotenv').config();
+    console.log('Loaded .env file for local development');
+  } catch (error) {
+    console.log('No local .env file loaded');
+  }
+}
+
+function logStartupSummary() {
+  const provider = getProvider();
+  const hasKey = Boolean(process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY);
+  console.log('=== Korean-Sakubun startup ===');
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Host mode: ${isRender ? 'Render' : 'local'}`);
+  console.log(`AI provider: ${provider}`);
+  console.log(`AI key configured: ${hasKey ? 'yes' : 'no'}`);
+  console.log(`Static files served from: ${path.join(__dirname)}`);
+}
+
+logStartupSummary();
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
@@ -17,8 +38,10 @@ app.get('/', (_req, res) => {
 app.post('/api/generate-question', async (req, res) => {
   const { level = 'beginner', style = 'short' } = req.body;
   const provider = getProvider();
+  const hasRequiredKey = Boolean(process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY);
 
-  if (!process.env.GOOGLE_AI_API_KEY && !process.env.GEMINI_API_KEY && !process.env.OPENAI_API_KEY) {
+  if (!hasRequiredKey) {
+    console.warn('No AI API key found. Returning built-in fallback question.');
     return res.json({
       prompt: '明日、友達とカフェに行きます。',
       answer: '내일 친구랑 카페에 가요.',
@@ -53,8 +76,10 @@ app.post('/api/generate-question', async (req, res) => {
 app.post('/api/score-answer', async (req, res) => {
   const { prompt, modelAnswer, userAnswer, level = 'beginner' } = req.body;
   const provider = getProvider();
+  const hasRequiredKey = Boolean(process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY);
 
-  if (!process.env.GOOGLE_AI_API_KEY && !process.env.GEMINI_API_KEY && !process.env.OPENAI_API_KEY) {
+  if (!hasRequiredKey) {
+    console.warn('No AI API key found. Returning built-in fallback scoring.');
     return res.json({
       status: '惜しい',
       score: 74,
@@ -94,4 +119,14 @@ app.post('/api/score-answer', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Korean-Sakubun server running on http://localhost:${PORT}`);
+  console.log(`Ready to receive requests on port ${PORT}`);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error.message);
+  console.error(error.stack || 'No stack trace');
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
 });
