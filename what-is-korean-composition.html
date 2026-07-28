@@ -10,26 +10,47 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header class="hero">
+    <header class="hero hero--compact">
       <nav class="topbar" aria-label="サイトナビゲーション">
-        <a class="brand" href="/">ひたすら韓国語作文</a>
+        <a class="brand" href="/">
+          <img src="KoreanSakubunLogo.png" alt="" class="brand__logo" loading="lazy" />
+          <span>ひたすら韓国語作文</span>
+        </a>
         <div class="topbar__links">
           <a href="/">ホーム</a>
           <a href="/learning-tips.html">学習のコツ</a>
+          <a href="/blog">ブログ</a>
         </div>
       </nav>
-      <div class="hero__content">
-        <p class="eyebrow">About</p>
-        <h1>韓国語作文とは</h1>
-        <p class="hero__lead">韓国語作文は、単語や文法だけでなく、自然な表現を組み立てる力を育てる練習です。</p>
+      <div class="hero__content page-hero page-hero--about">
+        <div class="page-hero__intro">
+          <p class="eyebrow">About</p>
+          <h1>韓国語作文とは</h1>
+          <p class="hero__lead">韓国語作文は、知っている単語を並べる練習ではありません。相手に伝わる順番で、自然な語尾と助詞を選びながら文を組み立てる練習です。</p>
+          <div class="hero__actions">
+            <a href="/#practice" class="btn btn--primary">作文を始める</a>
+            <a href="/learning-tips.html" class="btn btn--secondary">続けるコツを見る</a>
+          </div>
+        </div>
+        <aside class="page-hero__aside spotlight-card">
+          <span class="spotlight-card__eyebrow">Core idea</span>
+          <h2>作文で鍛える3つの力</h2>
+          <ul class="spotlight-card__list">
+            <li>語順を選ぶ力</li>
+            <li>助詞と語尾を調整する力</li>
+            <li>場面に合う言い方を選ぶ力</li>
+          </ul>
+        </aside>
       </div>
     </header>
     <main>
-      <section class="section">
+      <section class="section section--tight">
         <div class="section__heading">
-          <h2>作文練習で身につくこと</h2>
+          <p class="section__eyebrow">What you build</p>
+          <h2>作文練習で本当に身につくこと</h2>
+          <p>韓国語作文は、暗記した文を再生するだけでは育ちません。自分で選ぶ工程そのものが、学習の核心です。</p>
         </div>
-        <div class="features-grid">
+        <div class="insight-grid">
           <article class="card">
             <h3>語順の感覚</h3>
             <p>日本語と韓国語では語順が異なるため、作文を通じて自然な並び方を学べます。文を作るたびに、主語・目的語・動詞の位置が体に入ってきます。</p>
@@ -43,9 +64,79 @@
             <p>短文から始めて、徐々に自然な文章に近づけることで、実生活で使える表現力が伸びます。会話・メモ・日記・メールまで広く活かせます。</p>
           </article>
         </div>
-        <div class="card" style="margin-top: 1rem;">
-          <h3>作文練習のおすすめの進め方</h3>
-          <p>まずは1日1文でもよいので、毎日書くことが大切です。間違えた文は、なぜその表現になるのかを確認して、次の一文に活かすと上達が早くなります。</p>
+
+        <div class="editorial-grid">
+          <article class="editorial-panel">
+            <div class="section__heading section__heading--left">
+              <p class="section__eyebrow">Example</p>
+              <h2>単なる直訳では足りない理由</h2>
+            </div>
+            <div class="compare-card">
+              <div>
+                <span>日本語</span>
+                <p>今日は友達に会うから、ちょっと早く帰ります。</p>
+              </div>
+              <div>
+                <span>直訳っぽい文</span>
+                <p>오늘은 친구를 만나니까, 조금 빨리 돌아갑니다.</p>
+              </div>
+              <div>
+                <span>より自然な言い方</span>
+                <p>오늘은 친구를 만나서 좀 일찍 갈게요.</p>
+              </div>
+            </div>
+            <p>作文では「意味が近い」だけでなく、場面に合う温度感や自然な言い換えまで考える必要があります。</p>
+          </article>
+          <article class="editorial-panel editorial-panel--accent">
+            <div class="section__heading section__heading--left">
+              <p class="section__eyebrow">Why it works</p>
+              <h2>作文が伸びる仕組み</h2>
+            </div>
+            <ul class="check-list">
+              <li>自分で文を組み立てるので、受け身の暗記より記憶に残りやすい</li>
+              <li>間違いの理由が可視化されるので、弱点が曖昧なまま残りにくい</li>
+              <li>翻訳問題と会話返信を往復すると、静的な知識が実用へつながりやすい</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="editorial-panel">
+          <div class="section__heading section__heading--left">
+            <p class="section__eyebrow">How to use this app</p>
+            <h2>このアプリでの学び方</h2>
+          </div>
+          <div class="timeline-list">
+            <article class="timeline-step">
+              <span>01</span>
+              <div>
+                <h3>翻訳モードで土台を作る</h3>
+                <p>日本語を見て韓国語へ変換し、助詞・語尾・語順の基礎を整えます。</p>
+              </div>
+            </article>
+            <article class="timeline-step">
+              <span>02</span>
+              <div>
+                <h3>返信モードで反応速度を上げる</h3>
+                <p>友達からの発話に返す形で、自然な応答のスピード感とトーンを鍛えます。</p>
+              </div>
+            </article>
+            <article class="timeline-step">
+              <span>03</span>
+              <div>
+                <h3>添削内容を復習で固定する</h3>
+                <p>AIの採点で終わらせず、次回同じ弱点が出たときに回収できるようにします。</p>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <div class="cta-banner">
+          <div>
+            <span class="section__eyebrow">Ready to try?</span>
+            <h2>読むだけで終わらせず、1問書いてみる</h2>
+            <p>作文は理解したつもりより、実際に書いた回数で差が出ます。</p>
+          </div>
+          <a href="/#practice" class="btn btn--primary">練習に進む</a>
         </div>
       </section>
     </main>

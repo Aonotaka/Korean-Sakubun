@@ -74,9 +74,9 @@
             </div>
           </div>
           <p class="hero__lead">
-            AIが即時添削！サクサク解く韓国語作文トレーニング。日本語の文を見て、韓国語で自然に書く力を育てます。
+            AIが即時添削。翻訳トレーニングに加えて、友達からのメッセージへ韓国語で返すチャット型セッションまで、実際に使う表現を練習できます。
           </p>
-          <p class="hero__one-liner">初心者から上級者まで。AIが即時添削する韓国語作文トレーニング。</p>
+          <p class="hero__one-liner">翻訳練習と会話返信練習を往復しながら、自然な韓国語の反応速度を育てます。</p>
           <div class="hero__actions">
             <a href="#practice" class="btn btn--primary">トレーニングを始める</a>
             <a href="/login" class="btn btn--secondary">ログイン</a>
@@ -84,6 +84,7 @@
           </div>
           <ul class="hero__highlights">
             <li>初級〜上級まで対応</li>
+            <li>AIチャット返信モードを搭載</li>
             <li>模範解答と解説を確認</li>
             <li>分かち書きの注意も学べる</li>
           </ul>
@@ -98,10 +99,13 @@
             <div class="hero__visual-screen">
               <div class="hero__visual-illustration">
                 <div class="hero__visual-bubble hero__visual-bubble--top">
-                  「明日、友達と映画を見に行きます」
+                  친구: 오늘 저녁에 시간 돼?
+                </div>
+                <div class="hero__visual-bubble hero__visual-bubble--middle">
+                  저녁엔 괜찮아. 무슨 일이야?
                 </div>
                 <div class="hero__visual-bubble hero__visual-bubble--bottom">
-                  내일 친구랑 영화를 보러 갈 거예요.
+                  AI添削: 自然な返答です
                 </div>
                 <div class="hero__visual-badge">✓</div>
               </div>
@@ -147,6 +151,20 @@
             <p>回答後に、自然な修正案・日本語解説・ヒントをすぐ確認できるので学びが止まりません。</p>
           </article>
           <article class="card">
+            <div class="card__illustration" aria-hidden="true">
+              <svg viewBox="0 0 64 64">
+                <path d="M14 22h22" />
+                <path d="M28 42h22" />
+                <path d="M18 22l-4 6 4 6" />
+                <path d="M46 42l4-6-4-6" />
+                <path d="M20 18h26a6 6 0 0 1 6 6v8" />
+                <path d="M44 46H18a6 6 0 0 1-6-6v-8" />
+              </svg>
+            </div>
+            <h3>会話返信モード</h3>
+            <p>友達からのメッセージに返す形で、実際のチャットに近いテンポの韓国語を鍛えられます。</p>
+          </article>
+          <article class="card">
             <div class="card__illustration card__illustration--review" aria-hidden="true">
               <svg viewBox="0 0 64 64">
                 <path d="M20 18h24" />
@@ -164,6 +182,36 @@
 
       <section class="section section--soft">
         <div class="section__heading">
+          <p class="section__eyebrow">Two modes</p>
+          <h2>学び方に合わせて、練習モードを切り替え</h2>
+          <p>文を組み立てる力と、相手に反応する力は別です。両方を分けて練習できるようにしました。</p>
+        </div>
+        <div class="mode-grid">
+          <article class="mode-card mode-card--translation">
+            <span class="mode-card__eyebrow">Mode 01</span>
+            <h3>日本語→韓国語</h3>
+            <p>語順・助詞・語尾の基礎を固めたいときに向いています。短文から自然な文を作る感覚を育てます。</p>
+            <ul class="mode-card__list">
+              <li>日本語の文を見て韓国語で作文</li>
+              <li>模範解答と構文アドバイスを確認</li>
+              <li>苦手タグと復習リストに連動</li>
+            </ul>
+          </article>
+          <article class="mode-card mode-card--reply">
+            <span class="mode-card__eyebrow">Mode 02</span>
+            <h3>友達メッセージ返信</h3>
+            <p>会話の流れを読み、相手に合うトーンで自然に返す練習です。AI が次の発話も返してくれます。</p>
+            <ul class="mode-card__list">
+              <li>チャット風UIで返信トレーニング</li>
+              <li>常に採点・添削しながら会話継続</li>
+              <li>返信モードは長めセッションで定着</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="section section--soft">
+        <div class="section__heading">
           <p class="section__eyebrow">How it works</p>
           <h2>3ステップで始められます</h2>
         </div>
@@ -175,13 +223,13 @@
           </article>
           <article class="flow-card">
             <span>02</span>
-            <h3>日本語文を読んで回答</h3>
-            <p>韓国語で自然に表現し、ヒントや添削を見ながら理解を深めます。</p>
+            <h3>モードに合わせて回答</h3>
+            <p>翻訳問題を解くか、友達からのメッセージに返信するかを選び、韓国語で自然に表現します。</p>
           </article>
           <article class="flow-card">
             <span>03</span>
-            <h3>復習で定着</h3>
-            <p>誤答した内容を復習リストに残し、次回の学習に活かせます。</p>
+            <h3>採点と復習で定着</h3>
+            <p>毎回の採点・添削・会話の続きから弱点を見つけ、復習リストで次回に活かせます。</p>
           </article>
         </div>
       </section>
@@ -218,6 +266,10 @@
           </div>
           <p id="sessionStatus" class="session-status">AI接続状態: 取得中...</p>
           <p id="ttsStatus" class="session-status">音声状態: ブラウザ韓国語音声 (無料)</p>
+          <div class="practice-note">
+            <strong>今の新機能</strong>
+            <p>返信モードでは、AIが会話の続きを返しながら毎ターン採点します。</p>
+          </div>
           <p class="panel__hint">ハングル入力モードに切り替えて入力するとスムーズです。</p>
           <p class="panel__hint">音声読み上げボタンは、回答後に使えます。</p>
         </div>

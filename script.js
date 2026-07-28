@@ -22,6 +22,7 @@ const progressBadge = document.getElementById('progressBadge');
 const levelBadge = document.getElementById('levelBadge');
 const promptLabel = document.querySelector('.prompt-label');
 const sessionStatus = document.getElementById('sessionStatus');
+const practiceHints = Array.from(document.querySelectorAll('.panel--control .panel__hint'));
 const ttsModeSelect = document.getElementById('ttsModeSelect');
 const ttsStatus = document.getElementById('ttsStatus');
 const attemptCount = document.getElementById('attemptCount');
@@ -122,6 +123,7 @@ let currentLevel = 'beginner';
 let currentPracticeMode = 'translation';
 let sessionWrongQuestions = [];
 let replyTranscriptLastTurn = -1;
+let transcriptMessageCount = 0;
 let progressState = {
   attempted: 0,
   correct: 0,
@@ -166,19 +168,44 @@ function clearChatTranscript() {
   chatTranscript.innerHTML = '';
   chatTranscript.hidden = true;
   chatTranscript.classList.remove('chat-transcript--reply');
+  transcriptMessageCount = 0;
+}
+
+function getTranscriptTimeLabel() {
+  const now = new Date();
+  return now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+}
+
+function getTranscriptStatusLabel(role) {
+  if (role === 'user') return '既読';
+  if (role === 'assistant') return '採点済み';
+  return '受信';
 }
 
 function appendChatBubble(role, title, text) {
   if (!chatTranscript || !text) return null;
+  transcriptMessageCount += 1;
   const bubble = document.createElement('div');
   bubble.className = `chat-bubble chat-bubble--${role}`;
   const meta = document.createElement('span');
   meta.className = 'chat-bubble__meta';
   meta.textContent = title;
   const content = document.createElement('div');
+  content.className = 'chat-bubble__content';
   content.textContent = text;
+  const footer = document.createElement('div');
+  footer.className = 'chat-bubble__footer';
+  const time = document.createElement('span');
+  time.className = 'chat-bubble__time';
+  time.textContent = getTranscriptTimeLabel();
+  const status = document.createElement('span');
+  status.className = 'chat-bubble__status';
+  status.textContent = getTranscriptStatusLabel(role);
   bubble.appendChild(meta);
   bubble.appendChild(content);
+  footer.appendChild(time);
+  footer.appendChild(status);
+  bubble.appendChild(footer);
   chatTranscript.appendChild(bubble);
   chatTranscript.hidden = false;
   return bubble;
@@ -187,6 +214,63 @@ function appendChatBubble(role, title, text) {
 function updateTtsStatus(message) {
   if (!ttsStatus) return;
   ttsStatus.textContent = `音声状態: ${message}`;
+}
+
+function syncPracticeModeUi() {
+  const selectedMode = practiceModeSelect?.value === 'reply' ? 'reply' : 'translation';
+
+  if (answerInput) {
+    answerInput.placeholder = selectedMode === 'reply'
+      ? '例: 오늘은 괜찮아. 어디서 만날까?'
+      : '例: 내일 친구랑 영화를 보러 갈 거예요.';
+  }
+
+  if (promptLabel && currentQuestions.length === 0) {
+    promptLabel.textContent = selectedMode === 'reply' ? '友達のメッセージ' : '日本語の文';
+  }
+
+  if (practiceHints[0]) {
+    practiceHints[0].textContent = selectedMode === 'reply'
+      ? '返信モードでは、短くても相手に合うトーンで返すことを意識してください。'
+      : 'ハングル入力モードに切り替えて入力するとスムーズです。';
+  }
+
+  if (practiceHints[1]) {
+    practiceHints[1].textContent = selectedMode === 'reply'
+      ? '返信モードは長めセッションになり、毎ターン会話の続きと採点が返ります。'
+      : '音声読み上げボタンは、回答後に使えます。';
+  }
+
+  if (currentQuestions.length === 0 && promptText) {
+    promptText.textContent = selectedMode === 'reply'
+      ? '返信したいメッセージに備えて「セッション開始」を押してください。'
+      : 'レベルを選んで「セッション開始」を押してください。';
+  }
+}
+
+async function applyPracticeQueryParams() {
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get('mode');
+  const level = params.get('level');
+  const autostart = params.get('autostart');
+
+  if (practiceModeSelect && (mode === 'reply' || mode === 'translation')) {
+    practiceModeSelect.value = mode;
+  }
+
+  if (levelSelect && ['beginner', 'intermediate', 'advanced'].includes(level)) {
+    levelSelect.value = level;
+  }
+
+  syncPracticeModeUi();
+
+  if (autostart === '1') {
+    const practiceSection = document.getElementById('practice');
+    if (practiceSection) {
+      practiceSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    await startSession();
+  }
 }
 
 function formatDateTime(value) {
@@ -1201,8 +1285,12 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  if (practiceModeSelect) {
+    practiceModeSelect.addEventListener('change', syncPracticeModeUi);
+  }
+
   loadProgress();
   loadFeedbackComments();
   updateAiStatus('AI接続状態を確認しています...', false);
-  promptText.textContent = 'レベルを選んで「セッション開始」を押してください。';
+  applyPracticeQueryParams();
 });

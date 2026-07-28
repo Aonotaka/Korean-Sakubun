@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { getModel } = require('../services/ai');
+const { buildChatCompletionBody, getModel } = require('../services/ai');
 const {
   buildQuestionGenerationPrompts,
   buildReplyGenerationPrompts,
@@ -20,6 +20,22 @@ try {
   process.env.AI_MODEL = 'custom-model-name';
   assert.strictEqual(getModel('groq'), 'custom-model-name', 'AI_MODEL override should win');
 
+  const groqPayload = buildChatCompletionBody({
+    provider: 'groq',
+    systemPrompt: 'system',
+    userPrompt: 'user',
+    temperature: 0.1,
+  });
+  assert.strictEqual(groqPayload.response_format.type, 'json_object', 'groq payload should force JSON output');
+
+  const openAiPayload = buildChatCompletionBody({
+    provider: 'openai',
+    systemPrompt: 'system',
+    userPrompt: 'user',
+    temperature: 0.2,
+  });
+  assert.strictEqual(openAiPayload.response_format.type, 'json_object', 'openai payload should force JSON output');
+
   const questionPrompts = buildQuestionGenerationPrompts('beginner', 'short');
   assert.ok(questionPrompts.systemPrompt.includes('Return valid JSON only with the fields prompt, answer, and hint.'), 'question prompt should demand JSON only');
   assert.ok(questionPrompts.systemPrompt.includes('The hint must be in Japanese'), 'question prompt should keep the hint language rule');
@@ -32,6 +48,7 @@ try {
   });
 
   assert.ok(scoringPrompts.systemPrompt.includes('Return valid JSON only.'), 'scoring prompt should demand JSON only');
+  assert.ok(scoringPrompts.systemPrompt.includes('Prefer 正解'), 'scoring prompt should bias toward fair acceptance');
   assert.ok(scoringPrompts.systemPrompt.includes('feedback and explanation must be written in Japanese.'), 'scoring prompt should keep Japanese output rule');
   assert.ok(scoringPrompts.systemPrompt.includes('Examples:'), 'scoring prompt should include few-shot examples');
   assert.ok(scoringPrompts.userPrompt.includes('User answer:'), 'scoring prompt should include the user answer');
@@ -51,6 +68,7 @@ try {
     level: 'beginner',
   });
   assert.ok(replyScoringPrompts.systemPrompt.includes('conversation coach'), 'reply scoring should target conversation replies');
+  assert.ok(replyScoringPrompts.systemPrompt.includes('Prefer 正解'), 'reply scoring should bias toward fair acceptance');
   assert.ok(replyScoringPrompts.systemPrompt.includes('followUp'), 'reply scoring should ask for follow-up text');
 
   const fallbackReply = getFallbackReplyPrompt('beginner');

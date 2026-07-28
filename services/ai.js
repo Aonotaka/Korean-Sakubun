@@ -43,6 +43,20 @@ function parseJsonSafely(raw) {
   }
 }
 
+function buildChatCompletionBody({ provider, systemPrompt, userPrompt, temperature = 0.2 }) {
+  const payload = {
+    model: getModel(provider),
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    temperature,
+    response_format: { type: 'json_object' },
+  };
+
+  return payload;
+}
+
 async function askAi({ provider = getProvider(), systemPrompt, userPrompt, temperature = 0.2 }) {
   const selectedProvider = provider.toLowerCase();
   const apiKey = getApiKey(selectedProvider);
@@ -96,14 +110,12 @@ async function askAi({ provider = getProvider(), systemPrompt, userPrompt, tempe
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-          model: getModel(selectedProvider),
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
+        body: JSON.stringify(buildChatCompletionBody({
+          provider: selectedProvider,
+          systemPrompt,
+          userPrompt,
           temperature,
-        }),
+        })),
       });
 
       if (!response.ok) {
@@ -129,14 +141,12 @@ async function askAi({ provider = getProvider(), systemPrompt, userPrompt, tempe
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-          model: getModel(selectedProvider),
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
+        body: JSON.stringify(buildChatCompletionBody({
+          provider: selectedProvider,
+          systemPrompt,
+          userPrompt,
           temperature,
-        }),
+        })),
       });
 
       if (!response.ok) {
@@ -159,6 +169,7 @@ async function askAi({ provider = getProvider(), systemPrompt, userPrompt, tempe
 
 module.exports = {
   askAi,
+  buildChatCompletionBody,
   getProvider,
   getModel,
   DEFAULT_PROVIDER,
