@@ -46,7 +46,10 @@
   <body>
     <header class="hero">
       <nav class="topbar" aria-label="サイトナビゲーション">
-        <a class="brand" href="#top">ひたすら韓国語作文</a>
+        <a class="brand" href="#top">
+          <img src="KoreanSakubunLogo.png" alt="" class="brand__logo" loading="lazy" />
+          <span>ひたすら韓国語作文</span>
+        </a>
         <div class="topbar__links">
           <a href="#features">特徴</a>
           <a href="#practice">練習する</a>
@@ -58,20 +61,44 @@
       </nav>
 
       <div class="hero__content" id="top">
-        <p class="eyebrow">日本人の韓国語学習者のために</p>
-        <h1>ひたすら韓国語作文</h1>
-        <p class="hero__lead">
-          AIが即時添削！サクサク解く韓国語作文トレーニング。日本語の文を見て、韓国語で自然に書く力を育てます。
-        </p>
-        <div class="hero__actions">
-          <a href="#practice" class="btn btn--primary">トレーニングを始める</a>
-          <a href="/login" class="btn btn--secondary">ログイン</a>
+        <div class="hero__intro">
+          <p class="eyebrow">日本人の韓国語学習者のために</p>
+          <img src="KoreanSakubunLogo.png" alt="ひたすら韓国語作文のロゴ" class="hero__logo" loading="lazy" />
+          <h1>ひたすら韓国語作文</h1>
+          <p class="hero__lead">
+            AIが即時添削！サクサク解く韓国語作文トレーニング。日本語の文を見て、韓国語で自然に書く力を育てます。
+          </p>
+          <div class="hero__actions">
+            <a href="#practice" class="btn btn--primary">トレーニングを始める</a>
+            <a href="/login" class="btn btn--secondary">ログイン</a>
+            <button id="shareBtn" class="btn btn--secondary" type="button">Xでシェア</button>
+          </div>
+          <ul class="hero__highlights">
+            <li>初級〜上級まで対応</li>
+            <li>模範解答と解説を確認</li>
+            <li>分かち書きの注意も学べる</li>
+          </ul>
         </div>
-        <ul class="hero__highlights">
-          <li>初級〜上級まで対応</li>
-          <li>模範解答と解説を確認</li>
-          <li>分かち書きの注意も学べる</li>
-        </ul>
+
+        <div class="hero__visual" aria-hidden="true">
+          <div class="hero__visual-card">
+            <div class="hero__visual-header">
+              <span class="hero__visual-chip">AI添削</span>
+              <span class="hero__visual-chip hero__visual-chip--muted">今日の問題 5</span>
+            </div>
+            <div class="hero__visual-screen">
+              <div class="hero__visual-illustration">
+                <div class="hero__visual-bubble hero__visual-bubble--top">
+                  「明日、友達と映画を見に行きます」
+                </div>
+                <div class="hero__visual-bubble hero__visual-bubble--bottom">
+                  내일 친구랑 영화를 보러 갈 거예요.
+                </div>
+                <div class="hero__visual-badge">✓</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -86,14 +113,40 @@
         </div>
         <div class="features-grid">
           <article class="card">
+            <div class="card__illustration card__illustration--level" aria-hidden="true">
+              <svg viewBox="0 0 64 64">
+                <path d="M16 18h32" />
+                <path d="M20 18v22" />
+                <path d="M44 18v22" />
+                <path d="M20 40h24" />
+                <path d="M24 48h16" />
+              </svg>
+            </div>
             <h3>レベル別に挑戦</h3>
             <p>初級から上級まで、学習段階に合わせた問題を続けて用意できます。</p>
           </article>
           <article class="card">
+            <div class="card__illustration card__illustration--ai" aria-hidden="true">
+              <svg viewBox="0 0 64 64">
+                <path d="M18 24h28" />
+                <path d="M20 24c0-6 4-10 12-10s12 4 12 10" />
+                <path d="M22 38c2 4 4 6 10 6s8-2 10-6" />
+                <path d="M24 44h16" />
+              </svg>
+            </div>
             <h3>AIで採点・添削</h3>
             <p>回答後に、自然な修正案・日本語解説・ヒントをすぐ確認できるので学びが止まりません。</p>
           </article>
           <article class="card">
+            <div class="card__illustration card__illustration--review" aria-hidden="true">
+              <svg viewBox="0 0 64 64">
+                <path d="M20 18h24" />
+                <path d="M20 32h16" />
+                <path d="M20 46h24" />
+                <path d="M44 18l6 6-6 6" />
+                <path d="M44 32l6 6-6 6" />
+              </svg>
+            </div>
             <h3>復習に強い設計</h3>
             <p>弱点を残さないよう、間違えた問題を復習候補に保存して何度でも見直せます。</p>
           </article>
@@ -192,6 +245,9 @@
             <div><strong id="attemptCount">0</strong><span>解いた数</span></div>
             <div><strong id="correctCount">0</strong><span>正解数</span></div>
             <div><strong id="streakCount">0</strong><span>連続正解</span></div>
+            <div><strong id="todaySolvedCount">0</strong><span>今日解いた数</span></div>
+            <div><strong id="todayCorrectCount">0</strong><span>今日の正解数</span></div>
+            <div><strong id="todayAccuracy">0%</strong><span>今日の正解率</span></div>
           </div>
         </div>
         <div class="panel">

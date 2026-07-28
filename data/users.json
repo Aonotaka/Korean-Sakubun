@@ -3,7 +3,7 @@
     "id": "admin",
     "name": "管理者",
     "email": "aonotaka96@gmail.com",
-    "password": "pbkdf2$0afae915c7b53cefe57ac733a7812cee$64b4466ed2e994e94210781bc90e187703a8ef89547723f34feb966a3b579e03",
+    "password": "pbkdf2$49feeff66cae7359603e7ce6d16ecb22$aab0975810bc8e6f16234298854a605871c1c5ab30ebcda4d002d267f6d837d1",
     "role": "admin",
     "progress": {
       "attempted": 0,

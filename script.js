@@ -21,11 +21,15 @@ const attemptCount = document.getElementById('attemptCount');
 const statusPill = document.createElement('span');
 const correctCount = document.getElementById('correctCount');
 const streakCount = document.getElementById('streakCount');
+const todaySolvedCount = document.getElementById('todaySolvedCount');
+const todayCorrectCount = document.getElementById('todayCorrectCount');
+const todayAccuracy = document.getElementById('todayAccuracy');
 const reviewBtn = document.getElementById('reviewBtn');
 const reviewList = document.getElementById('reviewList');
 const registerForm = document.getElementById('registerForm');
 const authStatus = document.getElementById('authStatus');
 const modelAnswerBox = document.getElementById('modelAnswerBox');
+const shareBtn = document.getElementById('shareBtn');
 const registerNameInput = document.getElementById('registerName');
 const registerEmailInput = document.getElementById('registerEmail');
 const registerUserIdInput = document.getElementById('registerUserId');
@@ -288,7 +292,7 @@ const questionBank = {
 let currentQuestions = [];
 let currentIndex = 0;
 let currentLevel = 'beginner';
-let progressState = { attempted: 0, correct: 0, streak: 0, reviewQueue: [] };
+let progressState = { attempted: 0, correct: 0, streak: 0, reviewQueue: [], todaySolved: 0, todayCorrect: 0, todayKey: '' };
 const progressKey = 'korean-sakubun-progress';
 
 statusPill.className = 'status-pill';
@@ -304,15 +308,30 @@ function updateAiStatus(message, ready = false) {
   statusPill.className = `status-pill${ready ? ' is-ready' : ' is-offline'}`;
 }
 
+function getTodayKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+}
+
+function normalizeProgressState() {
+  const todayKey = getTodayKey();
+  if (progressState.todayKey !== todayKey) {
+    progressState.todaySolved = 0;
+    progressState.todayCorrect = 0;
+    progressState.todayKey = todayKey;
+  }
+}
+
 function loadProgress() {
   try {
     const stored = localStorage.getItem(progressKey);
     if (stored) {
-      progressState = JSON.parse(stored);
+      progressState = { ...progressState, ...JSON.parse(stored) };
     }
   } catch (error) {
     console.warn('Progress storage unavailable', error);
   }
+  normalizeProgressState();
   updateProgressUI();
 }
 
@@ -322,9 +341,14 @@ function saveProgress() {
 }
 
 function updateProgressUI() {
+  normalizeProgressState();
   attemptCount.textContent = progressState.attempted;
   correctCount.textContent = progressState.correct;
   streakCount.textContent = progressState.streak;
+  todaySolvedCount.textContent = progressState.todaySolved;
+  todayCorrectCount.textContent = progressState.todayCorrect;
+  const todayAccuracyValue = progressState.todaySolved ? Math.round((progressState.todayCorrect / progressState.todaySolved) * 100) : 0;
+  todayAccuracy.textContent = `${todayAccuracyValue}%`;
   renderReviewList();
 }
 
@@ -510,9 +534,12 @@ async function evaluateAnswer() {
     feedback = '意味は近いですが、語尾・分かち書き・助詞の選び方でさらに自然になります。';
   }
 
+  normalizeProgressState();
   progressState.attempted += 1;
+  progressState.todaySolved += 1;
   if (status === '正解') {
     progressState.correct += 1;
+    progressState.todayCorrect += 1;
     progressState.streak += 1;
   } else {
     progressState.streak = 0;
@@ -535,9 +562,24 @@ async function evaluateAnswer() {
   feedbackBox.hidden = false;
 }
 
+function shareToX() {
+  const shareText = 'ひたすら韓国語作文で、韓国語作文の練習とAI添削を楽しみながら学びました。';
+  const shareUrl = window.location.href;
+  const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
+
+  if (navigator.share) {
+    navigator.share({ title: 'ひたすら韓国語作文', text: shareText, url: shareUrl }).catch(() => {
+      window.open(xUrl, '_blank', 'noopener,noreferrer');
+    });
+    return;
+  }
+
+  window.open(xUrl, '_blank', 'noopener,noreferrer');
+}
+
 function speakFeedbackText() {
   if (!('speechSynthesis' in window)) {
-    authStatus.textContent = 'このブラウザでは音声再生に対応していません。';
+    sessionStatus.textContent = 'このブラウザでは音声再生に対応していません。';
     return;
   }
 
@@ -577,6 +619,9 @@ hintBtn.addEventListener('click', showHint);
 nextBtn.addEventListener('click', goToNextQuestion);
 if (speakBtn) {
   speakBtn.addEventListener('click', speakFeedbackText);
+}
+if (shareBtn) {
+  shareBtn.addEventListener('click', shareToX);
 }
 reviewBtn.addEventListener('click', () => {
   renderReviewList();
