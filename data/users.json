@@ -1,0 +1,54 @@
+[
+  {
+    "id": "admin",
+    "name": "管理者",
+    "email": "aonotaka96@gmail.com",
+    "password": "pbkdf2$0afae915c7b53cefe57ac733a7812cee$64b4466ed2e994e94210781bc90e187703a8ef89547723f34feb966a3b579e03",
+    "role": "admin",
+    "progress": {
+      "attempted": 0,
+      "correct": 0,
+      "streak": 0,
+      "reviewQueue": []
+    }
+  },
+  {
+    "id": "user-001",
+    "name": "学習ユーザー",
+    "email": "demo@korean-sakubun.com",
+    "password": "pbkdf2$13a91bd4d033cdd799daef7257138396$3c975429914f1f4274956d9a8ccbcd0d43f1361de1f4ff894161dd2308ccb545",
+    "role": "user",
+    "progress": {
+      "attempted": 0,
+      "correct": 0,
+      "streak": 0,
+      "reviewQueue": []
+    }
+  },
+  {
+    "id": "test-user",
+    "name": "テストユーザー",
+    "email": "testuser@example.com",
+    "password": "pbkdf2$8ce16a60691f9e51a8d9afd02d2d760d$f0d7cc997eb549b89ebf5eff087baabd72b20e73060725f37ec779986b11243f",
+    "role": "user",
+    "progress": {
+      "attempted": 0,
+      "correct": 0,
+      "streak": 0,
+      "reviewQueue": []
+    }
+  },
+  {
+    "id": "sample-user",
+    "name": "テストユーザー",
+    "email": "sample@example.com",
+    "password": "pbkdf2$abed4b407ca0451282c5190832e2ed60$be9e3230ecd820ca1091a869fd528fc66be6a3520fcad6e86b6645cbd5dd56bc",
+    "role": "user",
+    "progress": {
+      "attempted": 0,
+      "correct": 0,
+      "streak": 0,
+      "reviewQueue": []
+    }
+  }
+]

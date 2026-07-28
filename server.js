@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { askAi, getProvider } = require('./services/ai');
+const { validateRegistrationInput } = require('./services/validation');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -28,12 +29,58 @@ if (process.env.NODE_ENV !== 'production') {
 function logStartupSummary() {
   const provider = getProvider();
   const hasKey = Boolean(process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY);
+  const adminConfigured = Boolean(process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD);
   console.log('=== Korean-Sakubun startup ===');
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Host mode: ${isRender ? 'Render' : 'local'}`);
   console.log(`AI provider: ${provider}`);
   console.log(`AI key configured: ${hasKey ? 'yes' : 'no'}`);
+  console.log(`Admin account configured: ${adminConfigured ? 'yes' : 'no'}`);
   console.log(`Static files served from: ${path.join(__dirname)}`);
+}
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 310000, 32, 'sha256').toString('hex');
+  return `pbkdf2$${salt}$${hash}`;
+}
+
+function verifyPassword(password, storedHash) {
+  if (!storedHash) {
+    return false;
+  }
+  if (!String(storedHash).startsWith('pbkdf2$')) {
+    return String(storedHash) === String(password);
+  }
+  const [, salt, hash] = String(storedHash).split('$');
+  const derived = crypto.pbkdf2Sync(password, salt, 310000, 32, 'sha256').toString('hex');
+  return derived === hash;
+}
+
+function normalizePasswordStorage(users) {
+  return users.map((user) => {
+    if (user.password && !String(user.password).startsWith('pbkdf2$')) {
+      user.password = hashPassword(String(user.password));
+    }
+    return user;
+  });
+}
+
+function isStrongPassword(password) {
+  return password.length >= 8 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
+}
+
+function normalizeUserId(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function buildUserId(name, fallback = 'user') {
+  const normalized = normalizeUserId(name || fallback);
+  return normalized ? normalized : fallback;
 }
 
 function readJson(filePath, fallback) {
@@ -53,17 +100,29 @@ function writeJson(filePath, data) {
 }
 
 function ensureSeedData() {
-  const users = readJson(USERS_FILE, []);
-  const hasAdmin = users.some((user) => user.role === 'admin');
-  if (!hasAdmin) {
-    users.unshift({
-      id: 'admin',
-      name: '管理者',
-      email: 'admin@korean-sakubun.com',
-      password: 'korean-admin-2026',
-      role: 'admin',
-      progress: { attempted: 0, correct: 0, streak: 0, reviewQueue: [] },
-    });
+  let users = readJson(USERS_FILE, []);
+  users = normalizePasswordStorage(users);
+  const adminEmail = process.env.ADMIN_EMAIL ? String(process.env.ADMIN_EMAIL).trim() : '';
+  const adminPassword = process.env.ADMIN_PASSWORD ? String(process.env.ADMIN_PASSWORD).trim() : '';
+  const adminUser = users.find((user) => user.role === 'admin');
+
+  if (adminEmail && adminPassword) {
+    if (adminUser) {
+      adminUser.email = adminEmail;
+      adminUser.password = hashPassword(adminPassword);
+    } else {
+      users.unshift({
+        id: 'admin-001',
+        name: '管理者',
+        email: adminEmail,
+        password: hashPassword(adminPassword),
+        role: 'admin',
+        progress: { attempted: 0, correct: 0, streak: 0, reviewQueue: [] },
+      });
+    }
+  }
+
+  if (users.length) {
     writeJson(USERS_FILE, users);
   }
 
@@ -141,8 +200,30 @@ app.get('/blog', (_req, res) => {
   res.sendFile(path.join(__dirname, 'blog.html'));
 });
 
-app.get('/admin', (_req, res) => {
+app.get('/login', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'login.html'));
+});
+
+app.get('/login.html', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'login.html'));
+});
+
+const ADMIN_SECRET_PATH = process.env.ADMIN_SECRET_PATH || '/korean-admin-secret';
+
+app.get(ADMIN_SECRET_PATH, (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role !== 'admin') {
+    return res.redirect('/');
+  }
   res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
+app.get('/admin', (_req, res) => {
+  res.redirect('/');
+});
+
+app.get('/admin.html', (_req, res) => {
+  res.redirect('/');
 });
 
 app.get('/what-is-korean-composition', (_req, res) => {
@@ -170,20 +251,28 @@ app.get('/api/auth/me', (req, res) => {
 });
 
 app.post('/api/auth/register', (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, userId } = req.body;
+  const normalizedEmail = String(email || '').trim().toLowerCase();
   const users = readJson(USERS_FILE, []);
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: '名前・メール・パスワードを入力してください' });
+  const validation = validateRegistrationInput({ name, email: normalizedEmail, password, userId });
+
+  if (!validation.isValid) {
+    return res.status(400).json({ error: validation.errors[0] || '入力内容を確認してください', errors: validation.errors });
   }
-  if (users.some((user) => user.email.toLowerCase() === email.toLowerCase())) {
+  if (users.some((candidate) => candidate.email.toLowerCase() === normalizedEmail)) {
     return res.status(409).json({ error: 'このメールアドレスはすでに登録されています' });
   }
 
+  const generatedId = normalizeUserId(userId) || buildUserId(name, `user-${Date.now()}`);
+  if (users.some((candidate) => candidate.id === generatedId)) {
+    return res.status(409).json({ error: 'このユーザーIDはすでに使われています' });
+  }
+
   const user = {
-    id: `${Date.now()}`,
-    name,
-    email,
-    password,
+    id: generatedId,
+    name: String(name).trim(),
+    email: normalizedEmail,
+    password: hashPassword(password),
     role: 'user',
     progress: { attempted: 0, correct: 0, streak: 0, reviewQueue: [] },
   };
@@ -195,8 +284,8 @@ app.post('/api/auth/register', (req, res) => {
 
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body;
-  const users = readJson(USERS_FILE, []);
-  const user = users.find((candidate) => candidate.email.toLowerCase() === email.toLowerCase() && candidate.password === password);
+  const users = normalizePasswordStorage(readJson(USERS_FILE, []));
+  const user = users.find((candidate) => candidate.email.toLowerCase() === email.toLowerCase() && verifyPassword(password, candidate.password));
   if (!user) {
     return res.status(401).json({ error: 'メールアドレスまたはパスワードが違います' });
   }
@@ -291,7 +380,7 @@ app.post('/api/score-answer', async (req, res) => {
     const result = await askAi({
       provider,
       systemPrompt:
-        'You are a kind Korean teacher for Japanese speakers. Evaluate the learner answer, keeping spacing flexibility in mind. Return JSON with status, score, feedback, explanation, correctedText, alternatives.',
+        'You are a kind Korean teacher for Japanese speakers. Evaluate the learner answer with flexibility for Korean spacing, polite-form choices like 해요 vs 합니다, and everyday expression variations. If the meaning is correct and the sentence is natural, treat it as correct or nearly correct, and return JSON with status, score, feedback, explanation, correctedText, alternatives.',
       userPrompt: `Prompt: ${prompt}\nModel answer: ${modelAnswer}\nUser answer: ${userAnswer}\nLevel: ${level}`,
       temperature: 0.5,
     });
@@ -396,10 +485,17 @@ app.post('/api/blog/posts/:id/comments', (req, res) => {
   res.json(post);
 });
 
-app.listen(PORT, () => {
-  console.log(`Korean-Sakubun server running on http://localhost:${PORT}`);
-  console.log(`Ready to receive requests on port ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Korean-Sakubun server running on http://localhost:${PORT}`);
+    console.log(`Ready to receive requests on port ${PORT}`);
+  });
+}
+
+module.exports = {
+  app,
+  validateRegistrationInput,
+};
 
 process.on('uncaughtException', (error) => {
   console.error('Uncaught exception:', error.message);

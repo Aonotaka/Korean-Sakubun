@@ -24,6 +24,19 @@ npm start
 
 Even if AI is unavailable, the app now includes a large built-in question bank, so the study experience remains usable.
 
+### Account management
+
+- Admin credentials should be managed server-side, not shown on the website.
+- The admin screen is now only reachable through a hidden secret path such as /korean-admin-secret.
+- For production, set these environment variables in Render or your local shell:
+
+```bash
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=StrongAdminPassword123!
+```
+
+- Regular user accounts are stored in data/users.json with hashed passwords. Do not store plain passwords in the repository or expose them in the UI.
+
 ### Render deployment
 
 1. Push this repository to GitHub.

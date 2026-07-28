@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f9fbff" />
+  <rect x="70" y="70" width="1060" height="490" rx="36" fill="#ffffff" stroke="#dbe7ff" stroke-width="4" />
+  <circle cx="240" cy="260" r="90" fill="#4f7cff" />
+  <path d="M180 260h120" stroke="#fff" stroke-width="20" stroke-linecap="round" />
+  <path d="M240 200v120" stroke="#fff" stroke-width="20" stroke-linecap="round" />
+  <text x="380" y="245" fill="#1f2a44" font-family="Noto Sans JP, Arial, sans-serif" font-size="54" font-weight="700">ひたすら韓国語作文</text>
+  <text x="380" y="315" fill="#53627a" font-family="Noto Sans JP, Arial, sans-serif" font-size="30">日本人向けの韓国語作文練習とAI添削</text>
+  <text x="380" y="370" fill="#4f7cff" font-family="Noto Sans JP, Arial, sans-serif" font-size="24">学習・復習・自然な表現をサポート</text>
+</svg>

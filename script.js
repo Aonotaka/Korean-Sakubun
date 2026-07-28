@@ -13,6 +13,7 @@ const feedbackText = document.getElementById('feedbackText');
 const feedbackExplanation = document.getElementById('feedbackExplanation');
 const alternatives = document.getElementById('alternatives');
 const nextBtn = document.getElementById('nextBtn');
+const speakBtn = document.getElementById('speakBtn');
 const progressBadge = document.getElementById('progressBadge');
 const levelBadge = document.getElementById('levelBadge');
 const sessionStatus = document.getElementById('sessionStatus');
@@ -24,6 +25,11 @@ const reviewBtn = document.getElementById('reviewBtn');
 const reviewList = document.getElementById('reviewList');
 const registerForm = document.getElementById('registerForm');
 const authStatus = document.getElementById('authStatus');
+const modelAnswerBox = document.getElementById('modelAnswerBox');
+const registerNameInput = document.getElementById('registerName');
+const registerEmailInput = document.getElementById('registerEmail');
+const registerUserIdInput = document.getElementById('registerUserId');
+const registerPasswordInput = document.getElementById('registerPassword');
 
 function fillTemplate(template, replacements) {
   return template.replace(/\{(\w+)\}/g, (_, key) => replacements[key] ?? '');
@@ -462,6 +468,7 @@ async function evaluateAnswer() {
   let explanation = `解説: ${question.hint}`;
   let correctedText = question.answer;
   let alternativesList = [question.answer, '別解: もっと柔らかい表現も可能です'];
+  let modelAnswerText = question.answer;
 
   try {
     const response = await fetch('/api/score-answer', {
@@ -478,6 +485,7 @@ async function evaluateAnswer() {
       explanation = data.explanation || explanation;
       correctedText = data.correctedText || correctedText;
       alternativesList = data.alternatives || alternativesList;
+      modelAnswerText = correctedText;
     }
   } catch (error) {
     console.warn('AI scoring failed', error);
@@ -488,11 +496,18 @@ async function evaluateAnswer() {
     statusClass = 'good';
     score = Math.max(score, 100);
     feedback = '自然な韓国語です。文法の選び方も良いです。';
-  } else if (normalizedUser.includes('가') || normalizedUser.includes('어요') || normalizedUser.includes('니다')) {
+  } else if (
+    normalizedUser.includes('가') ||
+    normalizedUser.includes('어요') ||
+    normalizedUser.includes('니다') ||
+    normalizedUser.includes('해요') ||
+    normalizedUser.includes('합니다') ||
+    normalizedUser.includes('어요')
+  ) {
     status = '惜しい';
     statusClass = 'bad';
     score = Math.max(score, 72);
-    feedback = '意味は近いですが、語尾や分かち書きの調整でさらに自然になります。';
+    feedback = '意味は近いですが、語尾・分かち書き・助詞の選び方でさらに自然になります。';
   }
 
   progressState.attempted += 1;
@@ -509,6 +524,7 @@ async function evaluateAnswer() {
   feedbackStatus.textContent = status;
   feedbackStatus.className = `feedback-status ${statusClass}`;
   feedbackText.textContent = `採点: ${score}点`;
+  modelAnswerBox.innerHTML = `<strong>模範解答</strong><div>${modelAnswerText}</div>`;
   feedbackExplanation.textContent = `${feedback}\n\n${explanation}\n\n修正案: ${correctedText}`;
   alternatives.innerHTML = '';
   alternativesList.forEach((item) => {
@@ -517,6 +533,20 @@ async function evaluateAnswer() {
     alternatives.appendChild(chip);
   });
   feedbackBox.hidden = false;
+}
+
+function speakFeedbackText() {
+  if (!('speechSynthesis' in window)) {
+    authStatus.textContent = 'このブラウザでは音声再生に対応していません。';
+    return;
+  }
+
+  const text = `${feedbackStatus.textContent}. ${feedbackText.textContent}. ${feedbackExplanation.textContent}`;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'ja-JP';
+  utterance.rate = 1;
+  window.speechSynthesis.speak(utterance);
 }
 
 function goToNextQuestion() {
@@ -545,6 +575,9 @@ generateBtn.addEventListener('click', generateSingleQuestion);
 submitBtn.addEventListener('click', evaluateAnswer);
 hintBtn.addEventListener('click', showHint);
 nextBtn.addEventListener('click', goToNextQuestion);
+if (speakBtn) {
+  speakBtn.addEventListener('click', speakFeedbackText);
+}
 reviewBtn.addEventListener('click', () => {
   renderReviewList();
   updateAiStatus('復習候補を更新しました。', false);
@@ -552,18 +585,27 @@ reviewBtn.addEventListener('click', () => {
 
 registerForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const name = document.getElementById('registerName').value;
-  const email = document.getElementById('registerEmail').value;
-  const password = document.getElementById('registerPassword').value;
+  const name = registerNameInput.value;
+  const email = registerEmailInput.value;
+  const userId = registerUserIdInput.value;
+  const password = registerPasswordInput.value;
+  const validation = window.validateRegistrationInput ? window.validateRegistrationInput({ name, email, userId, password }) : null;
 
+  if (validation && !validation.isValid) {
+    authStatus.textContent = validation.errors[0] || '入力内容を確認してください';
+    return;
+  }
+
+  authStatus.textContent = '登録中...';
   const response = await fetch('/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, email, password }),
+    body: JSON.stringify({ name, email, userId, password }),
   });
 
   if (response.ok) {
     authStatus.textContent = 'アカウントを作成しました。学習進捗を保存できます。';
+    registerForm.reset();
     await syncProgressToServer();
   } else {
     const data = await response.json();
@@ -574,5 +616,5 @@ registerForm.addEventListener('submit', async (event) => {
 window.addEventListener('DOMContentLoaded', () => {
   loadProgress();
   updateAiStatus('AI接続状態を確認しています...', false);
-  startSession();
+  promptText.textContent = 'レベルを選んで「セッション開始」を押してください。';
 });

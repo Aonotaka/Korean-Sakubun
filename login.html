@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ログイン｜ひたすら韓国語作文</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="hero hero--compact">
+      <nav class="topbar" aria-label="サイトナビゲーション">
+        <a class="brand" href="/">ひたすら韓国語作文</a>
+        <div class="topbar__links">
+          <a href="/">ホーム</a>
+          <a href="/blog">ブログ</a>
+        </div>
+      </nav>
+      <div class="hero__content">
+        <p class="eyebrow">Login</p>
+        <h1>ログイン</h1>
+        <p class="hero__lead">一般ユーザーも管理者も、ここからログインできます。</p>
+      </div>
+    </header>
+    <main>
+      <section class="section">
+        <div class="panel">
+          <h2>アカウント作成</h2>
+          <p class="panel__hint">強いパスワードとユーザーIDを設定できます。</p>
+          <form id="registerForm" class="auth-form">
+            <label>名前<input id="registerName" required /></label>
+            <label>メールアドレス<input id="registerEmail" type="email" required /></label>
+            <label>ユーザーID<input id="registerUserId" placeholder="例: korean-student" /></label>
+            <label>パスワード<input id="registerPassword" type="password" required /></label>
+            <button class="btn btn--primary" type="submit">登録してログイン</button>
+          </form>
+          <p id="registerMessage" class="session-status"></p>
+        </div>
+        <div class="panel">
+          <h2>ログイン</h2>
+          <form id="loginForm" class="auth-form">
+            <label>メールアドレス<input id="loginEmail" type="email" required /></label>
+            <label>パスワード<input id="loginPassword" type="password" required /></label>
+            <button class="btn btn--secondary" type="submit">ログイン</button>
+          </form>
+          <p id="loginMessage" class="session-status"></p>
+          <p class="panel__hint">管理者アカウントはサーバー側で厳重に管理します。</p>
+        </div>
+      </section>
+    </main>
+    <footer class="footer">
+      <p>ひたすら韓国語作文</p>
+    </footer>
+    <script src="login.js"></script>
+  </body>
+</html>
