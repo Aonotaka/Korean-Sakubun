@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>管理画面｜ひたすら韓国語作文</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <nav class="topbar" aria-label="サイトナビゲーション">
+        <a class="brand" href="/">ひたすら韓国語作文</a>
+        <div class="topbar__links">
+          <a href="/">ホーム</a>
+          <a href="/blog">ブログ</a>
+        </div>
+      </nav>
+      <div class="hero__content">
+        <p class="eyebrow">Admin</p>
+        <h1>管理画面</h1>
+        <p class="hero__lead">ブログ記事の作成・編集・削除を行えます。管理者アカウントでログインしてください。</p>
+      </div>
+    </header>
+    <main>
+      <section class="section">
+        <div class="panel" id="authPanel">
+          <h2>ログイン</h2>
+          <p class="panel__hint">管理者アカウントでログインしてください。</p>
+          <form id="loginForm" class="auth-form">
+            <label>メールアドレス<input type="email" id="loginEmail" required /></label>
+            <label>パスワード<input type="password" id="loginPassword" required /></label>
+            <button class="btn btn--primary" type="submit" id="loginSubmit">ログイン</button>
+          </form>
+          <p id="authMessage" class="session-status" aria-live="polite"></p>
+        </div>
+        <div class="panel" id="adminPanel" hidden>
+          <div class="panel__head">
+            <h2>記事管理</h2>
+            <button class="btn btn--secondary" type="button" id="logoutBtn">ログアウト</button>
+          </div>
+          <form id="postForm" class="auth-form">
+            <label>タイトル<input type="text" id="postTitle" required /></label>
+            <label>要約<textarea id="postExcerpt" rows="2"></textarea></label>
+            <label>本文<textarea id="postContent" rows="8" required></textarea></label>
+            <button class="btn btn--primary" type="submit">投稿する</button>
+          </form>
+          <div id="postList" class="review-list"></div>
+        </div>
+      </section>
+    </main>
+    <footer class="footer">
+      <p>ひたすら韓国語作文 — 管理画面</p>
+    </footer>
+    <script src="admin.js"></script>
+  </body>
+</html>

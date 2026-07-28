@@ -49,6 +49,10 @@
           <a href="#features">特徴</a>
           <a href="#practice">練習する</a>
           <a href="#progress">進捗</a>
+          <a href="/what-is-korean-composition">韓国語作文とは</a>
+          <a href="/learning-tips">学習のコツ</a>
+          <a href="/blog">ブログ</a>
+          <a href="/admin">管理</a>
         </div>
       </nav>
 
@@ -183,6 +187,17 @@
             <div><strong id="correctCount">0</strong><span>正解数</span></div>
             <div><strong id="streakCount">0</strong><span>連続正解</span></div>
           </div>
+        </div>
+        <div class="panel">
+          <h2>アカウント</h2>
+          <p>登録すると、学習進捗を保存できます。</p>
+          <form id="registerForm" class="auth-form">
+            <input id="registerName" placeholder="名前" required />
+            <input id="registerEmail" type="email" placeholder="メール" required />
+            <input id="registerPassword" type="password" placeholder="パスワード" required />
+            <button class="btn btn--primary" type="submit">登録する</button>
+          </form>
+          <p id="authStatus" class="session-status"></p>
         </div>
         <div class="panel">
           <h2>復習リスト</h2>

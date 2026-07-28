@@ -22,6 +22,8 @@ const correctCount = document.getElementById('correctCount');
 const streakCount = document.getElementById('streakCount');
 const reviewBtn = document.getElementById('reviewBtn');
 const reviewList = document.getElementById('reviewList');
+const registerForm = document.getElementById('registerForm');
+const authStatus = document.getElementById('authStatus');
 
 function fillTemplate(template, replacements) {
   return template.replace(/\{(\w+)\}/g, (_, key) => replacements[key] ?? '');
@@ -310,6 +312,7 @@ function loadProgress() {
 
 function saveProgress() {
   localStorage.setItem(progressKey, JSON.stringify(progressState));
+  syncProgressToServer();
 }
 
 function updateProgressUI() {
@@ -317,6 +320,18 @@ function updateProgressUI() {
   correctCount.textContent = progressState.correct;
   streakCount.textContent = progressState.streak;
   renderReviewList();
+}
+
+async function syncProgressToServer() {
+  try {
+    await fetch('/api/progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(progressState),
+    });
+  } catch (error) {
+    console.warn('Progress sync failed', error);
+  }
 }
 
 function renderReviewList() {
@@ -533,6 +548,27 @@ nextBtn.addEventListener('click', goToNextQuestion);
 reviewBtn.addEventListener('click', () => {
   renderReviewList();
   updateAiStatus('復習候補を更新しました。', false);
+});
+
+registerForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = document.getElementById('registerName').value;
+  const email = document.getElementById('registerEmail').value;
+  const password = document.getElementById('registerPassword').value;
+
+  const response = await fetch('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, password }),
+  });
+
+  if (response.ok) {
+    authStatus.textContent = 'アカウントを作成しました。学習進捗を保存できます。';
+    await syncProgressToServer();
+  } else {
+    const data = await response.json();
+    authStatus.textContent = data.error || '登録できませんでした';
+  }
 });
 
 window.addEventListener('DOMContentLoaded', () => {
