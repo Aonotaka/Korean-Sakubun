@@ -11,6 +11,7 @@ const isRender = Boolean(process.env.RENDER);
 const DATA_DIR = path.join(__dirname, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const POSTS_FILE = path.join(DATA_DIR, 'posts.json');
+const FEEDBACK_FILE = path.join(DATA_DIR, 'feedback.json');
 const sessions = new Map();
 
 if (!fs.existsSync(DATA_DIR)) {
@@ -138,6 +139,11 @@ function ensureSeedData() {
       comments: [],
     });
     writeJson(POSTS_FILE, posts);
+  }
+
+  const feedback = readJson(FEEDBACK_FILE, []);
+  if (!Array.isArray(feedback)) {
+    writeJson(FEEDBACK_FILE, []);
   }
 }
 
@@ -579,6 +585,38 @@ app.post('/api/tts/synthesize', async (req, res) => {
     console.error('Cloud TTS synthesis failed:', error.message);
     return res.status(500).json({ error: 'Cloud TTS synthesis failed' });
   }
+});
+
+app.get('/api/feedback', (_req, res) => {
+  const feedback = readJson(FEEDBACK_FILE, []);
+  const safeFeedback = Array.isArray(feedback) ? feedback.slice(0, 50) : [];
+  res.json(safeFeedback);
+});
+
+app.post('/api/feedback', (req, res) => {
+  const name = String(req.body?.name || '匿名').trim().slice(0, 24);
+  const comment = String(req.body?.comment || '').trim();
+
+  if (!comment) {
+    return res.status(400).json({ error: 'コメントを入力してください' });
+  }
+
+  if (comment.length > 280) {
+    return res.status(400).json({ error: 'コメントは280文字以内で入力してください' });
+  }
+
+  const feedback = readJson(FEEDBACK_FILE, []);
+  const safeFeedback = Array.isArray(feedback) ? feedback : [];
+  const newItem = {
+    id: `feedback-${Date.now()}`,
+    name: name || '匿名',
+    comment,
+    createdAt: new Date().toISOString(),
+  };
+
+  safeFeedback.unshift(newItem);
+  writeJson(FEEDBACK_FILE, safeFeedback.slice(0, 100));
+  res.status(201).json(newItem);
 });
 
 app.get('/api/blog/posts', (_req, res) => {

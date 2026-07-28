@@ -76,6 +76,7 @@
           <p class="hero__lead">
             AIが即時添削！サクサク解く韓国語作文トレーニング。日本語の文を見て、韓国語で自然に書く力を育てます。
           </p>
+          <p class="hero__one-liner">初心者から上級者まで。AIが即時添削する韓国語作文トレーニング。</p>
           <div class="hero__actions">
             <a href="#practice" class="btn btn--primary">トレーニングを始める</a>
             <a href="/login" class="btn btn--secondary">ログイン</a>
@@ -210,6 +211,7 @@
           </div>
           <p id="sessionStatus" class="session-status">AI接続状態: 取得中...</p>
           <p id="ttsStatus" class="session-status">音声状態: ブラウザ韓国語音声 (無料)</p>
+          <p class="panel__hint">ハングル入力モードに切り替えて入力するとスムーズです。</p>
           <p class="panel__hint">音声読み上げボタンは、回答後に使えます。</p>
         </div>
 
@@ -239,8 +241,18 @@
             <button id="hintBtn" class="btn btn--secondary">ヒントを見る</button>
             <button id="submitBtn" class="btn btn--primary">回答を送信</button>
           </div>
+          <p class="panel__hint">PCでは Enter で送信、Shift + Enter で改行できます。</p>
 
           <div id="hintBox" class="hint-box" hidden></div>
+
+          <div id="sessionResultBox" class="feedback-box" hidden>
+            <h4>セット結果</h4>
+            <p id="sessionResultText"></p>
+            <div class="actions-row">
+              <button id="retryWrongBtn" class="btn btn--secondary" type="button">間違えた問題をもう一度解く</button>
+              <button id="restartSessionBtn" class="btn btn--primary" type="button">同じ設定で再スタート</button>
+            </div>
+          </div>
 
           <div id="feedbackBox" class="feedback-box" hidden>
             <h4>フィードバック</h4>
@@ -293,26 +305,17 @@
           <button id="reviewBtn" class="btn btn--secondary">復習対象を見る</button>
           <ul id="reviewList" class="review-list"></ul>
         </div>
-      </section>
 
-      <section class="section section--soft">
-        <div class="section__heading">
-          <p class="section__eyebrow">Roadmap</p>
-          <h2>今後の拡張予定</h2>
-        </div>
-        <div class="features-grid">
-          <article class="card">
-            <h3>SNSシェア</h3>
-            <p>XやLINEで共有しやすいよう、魅力的なOGP画像とシェア用メタ情報を整えます。</p>
-          </article>
-          <article class="card">
-            <h3>音声読み上げ</h3>
-            <p>模範解答をブラウザ標準の音声で聞けるようにして、耳からも学べる体験を増やします。</p>
-          </article>
-          <article class="card">
-            <h3>学習実績</h3>
-            <p>今日解いた問題数や正解率を見える化して、学習のモチベーションを維持しやすくします。</p>
-          </article>
+        <div class="panel">
+          <h2>みんなのコメント</h2>
+          <p>使ってみた感想や改善してほしい点を教えてください。</p>
+          <form id="feedbackForm" class="feedback-form">
+            <input id="feedbackName" maxlength="24" placeholder="名前 (任意)" />
+            <textarea id="feedbackComment" rows="3" maxlength="280" placeholder="コメントを書く" required></textarea>
+            <button id="feedbackSubmitBtn" class="btn btn--primary" type="submit">コメントを投稿</button>
+          </form>
+          <p id="feedbackSubmitStatus" class="session-status"></p>
+          <ul id="feedbackList" class="feedback-list"></ul>
         </div>
       </section>
     </main>

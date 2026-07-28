@@ -3,7 +3,7 @@
     "id": "admin",
     "name": "管理者",
     "email": "admin@example.com",
-    "password": "pbkdf2$5dbb766c955b4d2110ce138753d1de44$51f5047ed2fe91cbf0e7e990b25f91945552acfb41c08c2d00b149adf14059d5",
+    "password": "pbkdf2$a0f80729307bf66e410a16c8fa2842c4$dd803b2620f1dc766ba7e2a3cd5df8456966a501b3e36b7f5cde1823a7041008",
     "role": "admin",
     "progress": {
       "attempted": 0,

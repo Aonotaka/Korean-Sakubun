@@ -296,6 +296,12 @@ h1 {
   margin: 0 auto 1.5rem;
 }
 
+.hero__one-liner {
+  margin: -0.8rem 0 1rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
 .hero__actions,
 .actions-row,
 .button-stack {
@@ -614,6 +620,12 @@ textarea {
   color: var(--danger);
 }
 
+#sessionResultText {
+  color: var(--text);
+  font-weight: 600;
+  margin-bottom: 0.9rem;
+}
+
 .alternatives {
   display: flex;
   flex-wrap: wrap;
@@ -740,6 +752,46 @@ textarea {
   background: var(--accent-soft);
   color: var(--accent);
   cursor: pointer;
+}
+
+.feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.feedback-list {
+  list-style: none;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.feedback-list li {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.7rem 0.8rem;
+}
+
+.feedback-list strong {
+  display: inline-block;
+  margin-bottom: 0.2rem;
+}
+
+.feedback-list p {
+  margin: 0;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.feedback-list time {
+  display: inline-block;
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .blog-list {

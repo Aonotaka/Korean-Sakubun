@@ -40,6 +40,15 @@ const registerEmailInput = document.getElementById('registerEmail');
 const registerUserIdInput = document.getElementById('registerUserId');
 const registerPasswordInput = document.getElementById('registerPassword');
 const firstQuestionGuide = document.getElementById('firstQuestionGuide');
+const sessionResultBox = document.getElementById('sessionResultBox');
+const sessionResultText = document.getElementById('sessionResultText');
+const retryWrongBtn = document.getElementById('retryWrongBtn');
+const restartSessionBtn = document.getElementById('restartSessionBtn');
+const feedbackForm = document.getElementById('feedbackForm');
+const feedbackNameInput = document.getElementById('feedbackName');
+const feedbackCommentInput = document.getElementById('feedbackComment');
+const feedbackSubmitStatus = document.getElementById('feedbackSubmitStatus');
+const feedbackList = document.getElementById('feedbackList');
 
 let koreanVoice = null;
 let koreanVoices = [];
@@ -306,6 +315,7 @@ const questionBank = {
 let currentQuestions = [];
 let currentIndex = 0;
 let currentLevel = 'beginner';
+let sessionWrongQuestions = [];
 let progressState = {
   attempted: 0,
   correct: 0,
@@ -336,6 +346,78 @@ function updateAiStatus(message, ready = false) {
 function updateTtsStatus(message) {
   if (!ttsStatus) return;
   ttsStatus.textContent = `音声状態: ${message}`;
+}
+
+function formatDateTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('ja-JP');
+}
+
+function renderFeedbackList(items) {
+  if (!feedbackList) return;
+  if (!items.length) {
+    feedbackList.innerHTML = '<li>まだコメントはありません。</li>';
+    return;
+  }
+
+  feedbackList.innerHTML = '';
+  items.forEach((item) => {
+    const li = document.createElement('li');
+    const author = document.createElement('strong');
+    author.textContent = item.name || '匿名';
+    const comment = document.createElement('p');
+    comment.textContent = item.comment || '';
+    const time = document.createElement('time');
+    time.textContent = formatDateTime(item.createdAt);
+    li.appendChild(author);
+    li.appendChild(comment);
+    li.appendChild(time);
+    feedbackList.appendChild(li);
+  });
+}
+
+async function loadFeedbackComments() {
+  if (!feedbackList) return;
+  try {
+    const response = await fetch('/api/feedback');
+    const data = response.ok ? await response.json() : [];
+    renderFeedbackList(Array.isArray(data) ? data : []);
+  } catch (error) {
+    feedbackList.innerHTML = '<li>コメントの読み込みに失敗しました。</li>';
+  }
+}
+
+async function submitFeedbackComment(event) {
+  event.preventDefault();
+  if (!feedbackForm || !feedbackCommentInput || !feedbackSubmitStatus) return;
+
+  const name = String(feedbackNameInput?.value || '').trim();
+  const comment = String(feedbackCommentInput.value || '').trim();
+  if (!comment) {
+    feedbackSubmitStatus.textContent = 'コメントを入力してください。';
+    return;
+  }
+
+  feedbackSubmitStatus.textContent = '投稿中...';
+  try {
+    const response = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, comment }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      feedbackSubmitStatus.textContent = data.error || '投稿に失敗しました。';
+      return;
+    }
+
+    feedbackSubmitStatus.textContent = 'コメントを投稿しました。ありがとうございます。';
+    feedbackForm.reset();
+    await loadFeedbackComments();
+  } catch (error) {
+    feedbackSubmitStatus.textContent = '投稿中にエラーが発生しました。';
+  }
 }
 
 function loadTtsModePreference() {
@@ -713,12 +795,14 @@ function addReviewItem(question, status) {
 async function startSession() {
   currentLevel = levelSelect.value;
   const count = Number(questionCountSelect.value);
+  sessionWrongQuestions = [];
   startBtn.disabled = true;
   startBtn.textContent = '生成中...';
   updateAiStatus('AIで問題を生成しています...', false);
   currentQuestions = [];
   currentIndex = 0;
   feedbackBox.hidden = true;
+  if (sessionResultBox) sessionResultBox.hidden = true;
   hintBox.hidden = true;
   answerInput.value = '';
 
@@ -762,6 +846,8 @@ async function generateSingleQuestion() {
   const question = await generateQuestion();
   currentQuestions = [question];
   currentIndex = 0;
+  sessionWrongQuestions = [];
+  if (sessionResultBox) sessionResultBox.hidden = true;
   showQuestion();
   updateAiStatus(question.source === 'ai' ? 'AI生成の問題を表示しました。' : 'サンプル問題を表示しました。', question.source === 'ai');
 }
@@ -781,6 +867,7 @@ function showQuestion() {
   levelBadge.textContent = getLevelLabel(currentLevel);
   hintBox.hidden = true;
   feedbackBox.hidden = true;
+  if (sessionResultBox) sessionResultBox.hidden = true;
   if (firstQuestionGuide) {
     firstQuestionGuide.hidden = currentIndex !== 0;
   }
@@ -871,6 +958,9 @@ async function evaluateAnswer() {
     progressState.streak += 1;
   } else {
     progressState.streak = 0;
+    if (!sessionWrongQuestions.some((item) => item.prompt === question.prompt)) {
+      sessionWrongQuestions.push(question);
+    }
   }
   addReviewItem(question, status);
   saveProgress();
@@ -939,10 +1029,34 @@ function goToNextQuestion() {
     currentIndex += 1;
     showQuestion();
   } else {
-    promptText.textContent = 'お疲れさまでした。もう一度始めることができます。';
+    const total = currentQuestions.length;
+    const wrong = sessionWrongQuestions.length;
+    const correct = total - wrong;
+    promptText.textContent = 'お疲れさまでした。セットが完了しました。';
     progressBadge.textContent = `${currentQuestions.length} / ${currentQuestions.length}`;
     feedbackBox.hidden = true;
+    if (sessionResultText) {
+      sessionResultText.textContent = `${total}問中${correct}問正解でした。${wrong ? ` 間違えた${wrong}問を再挑戦できます。` : ' 全問正解です。'}`;
+    }
+    if (retryWrongBtn) {
+      retryWrongBtn.disabled = wrong === 0;
+    }
+    if (sessionResultBox) {
+      sessionResultBox.hidden = false;
+    }
   }
+}
+
+function retryWrongQuestions() {
+  if (!sessionWrongQuestions.length) {
+    updateAiStatus('再挑戦する問題はありません。', false);
+    return;
+  }
+  currentQuestions = sessionWrongQuestions.map((item) => ({ ...item, source: 'retry' }));
+  currentIndex = 0;
+  sessionWrongQuestions = [];
+  showQuestion();
+  updateAiStatus('間違えた問題のみ再挑戦を開始しました。', false);
 }
 
 function startReviewItem(index) {
@@ -1001,6 +1115,27 @@ registerForm.addEventListener('submit', async (event) => {
   }
 });
 
+if (feedbackForm) {
+  feedbackForm.addEventListener('submit', submitFeedbackComment);
+}
+
+if (answerInput) {
+  answerInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      evaluateAnswer();
+    }
+  });
+}
+
+if (retryWrongBtn) {
+  retryWrongBtn.addEventListener('click', retryWrongQuestions);
+}
+
+if (restartSessionBtn) {
+  restartSessionBtn.addEventListener('click', startSession);
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   refreshKoreanVoices();
   if ('speechSynthesis' in window) {
@@ -1018,6 +1153,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   loadProgress();
+  loadFeedbackComments();
   updateAiStatus('AI接続状態を確認しています...', false);
   promptText.textContent = 'レベルを選んで「セッション開始」を押してください。';
 });
