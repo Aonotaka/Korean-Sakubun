@@ -3,11 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Korean-Sakubun | 韓国語作文トレーニング</title>
+    <title>ひたすら韓国語作文｜日本人向け韓国語作文練習・AI添削アプリ</title>
     <meta
       name="description"
-      content="日本人向けの韓国語作文トレーニングWebサイト。AIで問題生成し、即時採点と復習までできる学習体験を提供します。"
+      content="ひたすら韓国語作文は、日本人向けの韓国語作文練習サービスです。AIで問題生成・採点・添削・復習までできる、親しみやすい韓国語学習体験を提供します。"
     />
+    <meta
+      name="keywords"
+      content="韓国語作文, 韓国語学習, 日本人向け韓国語, 韓国語練習, AI韓国語添削, 韓国語作文アプリ"
+    />
+    <link rel="canonical" href="https://korean-sakubun.onrender.com/" />
+    <meta property="og:title" content="ひたすら韓国語作文｜韓国語作文練習アプリ" />
+    <meta
+      property="og:description"
+      content="日本人学習者向けに、韓国語作文の練習からAI添削・復習まで一気にできるサービスです。"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://korean-sakubun.onrender.com/" />
+    <meta property="og:locale" content="ja_JP" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ひたすら韓国語作文" />
+    <meta name="twitter:description" content="日本人向けの韓国語作文練習とAI添削を楽しみながら学べるサービスです。" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -15,39 +31,95 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "ひたすら韓国語作文",
+        "url": "https://korean-sakubun.onrender.com/",
+        "description": "日本人向けの韓国語作文練習とAI添削を楽しみながら学べるサービスです。"
+      }
+    </script>
   </head>
   <body>
     <header class="hero">
-      <div class="hero__content">
-        <p class="eyebrow">日本人の韓国語学習者のための</p>
-        <h1>Korean-Sakubun</h1>
+      <nav class="topbar" aria-label="サイトナビゲーション">
+        <a class="brand" href="#top">ひたすら韓国語作文</a>
+        <div class="topbar__links">
+          <a href="#features">特徴</a>
+          <a href="#practice">練習する</a>
+          <a href="#progress">進捗</a>
+        </div>
+      </nav>
+
+      <div class="hero__content" id="top">
+        <p class="eyebrow">日本人の韓国語学習者のために</p>
+        <h1>ひたすら韓国語作文</h1>
         <p class="hero__lead">
-          AIで問題を自動生成し、短文作文の採点・添削・復習まで一気にできる学習体験です。
+          日本語の文を見て、韓国語で自然に書く力を育てます。AIで問題を作り、添削と復習まで、学習が止まらない体験に。
         </p>
         <div class="hero__actions">
           <a href="#practice" class="btn btn--primary">トレーニングを始める</a>
-          <a href="#features" class="btn btn--secondary">機能を見る</a>
+          <a href="#features" class="btn btn--secondary">特徴を見る</a>
         </div>
+        <ul class="hero__highlights">
+          <li>初級〜上級まで対応</li>
+          <li>AIで即時フィードバック</li>
+          <li>復習リストで学習が続く</li>
+        </ul>
       </div>
     </header>
 
     <main>
-      <section id="features" class="features">
-        <article class="card">
-          <h2>レベル別に挑戦</h2>
-          <p>初級から上級まで、学習段階に合わせて問題を出せます。</p>
-        </article>
-        <article class="card">
-          <h2>AI採点・添削</h2>
-          <p>回答を送ると、採点・自然な修正案・日本語解説をすぐ確認できます。</p>
-        </article>
-        <article class="card">
-          <h2>復習に強い設計</h2>
-          <p>間違えた問題を保存して、復習候補として何度でも見直せます。</p>
-        </article>
+      <section id="features" class="section">
+        <div class="section__heading">
+          <p class="section__eyebrow">Why this app</p>
+          <h2>韓国語作文を、もっとやさしく・もっと続けやすく</h2>
+          <p>
+            ひたすら韓国語作文は、作文の型に迷う学習者でも取り組みやすいよう、レベル別の練習と親しみやすいUIで設計しています。
+          </p>
+        </div>
+        <div class="features-grid">
+          <article class="card">
+            <h3>レベル別に挑戦</h3>
+            <p>初級から上級まで、学習段階に合わせた問題を続けて用意できます。</p>
+          </article>
+          <article class="card">
+            <h3>AIで採点・添削</h3>
+            <p>回答後に、自然な修正案・日本語解説・ヒントをすぐ確認できるので学びが止まりません。</p>
+          </article>
+          <article class="card">
+            <h3>復習に強い設計</h3>
+            <p>弱点を残さないよう、間違えた問題を復習候補に保存して何度でも見直せます。</p>
+          </article>
+        </div>
       </section>
 
-      <section id="practice" class="practice">
+      <section class="section section--soft">
+        <div class="section__heading">
+          <p class="section__eyebrow">How it works</p>
+          <h2>3ステップで始められます</h2>
+        </div>
+        <div class="flow-grid">
+          <article class="flow-card">
+            <span>01</span>
+            <h3>レベルを選ぶ</h3>
+            <p>初級・中級・上級のどれかを選んで、すぐに練習を始められます。</p>
+          </article>
+          <article class="flow-card">
+            <span>02</span>
+            <h3>日本語文を読んで回答</h3>
+            <p>韓国語で自然に表現し、ヒントや添削を見ながら理解を深めます。</p>
+          </article>
+          <article class="flow-card">
+            <span>03</span>
+            <h3>復習で定着</h3>
+            <p>誤答した内容を復習リストに残し、次回の学習に活かせます。</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="practice" class="section practice-section">
         <div class="panel panel--control">
           <h2>練習設定</h2>
           <label>
@@ -103,7 +175,7 @@
         </div>
       </section>
 
-      <section class="progress-section">
+      <section id="progress" class="section progress-section">
         <div class="panel">
           <h2>学習進捗</h2>
           <div id="progressStats" class="stats-grid">
@@ -119,6 +191,10 @@
         </div>
       </section>
     </main>
+
+    <footer class="footer">
+      <p>ひたすら韓国語作文 — 日本人のための韓国語作文練習とAI添削サービス</p>
+    </footer>
 
     <script src="script.js"></script>
   </body>
