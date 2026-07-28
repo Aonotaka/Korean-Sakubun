@@ -221,6 +221,78 @@ function getFallbackQuestion(level = 'beginner') {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+function normalizeScore(value, fallback = 74) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  const scaled = numeric <= 1 ? Math.round(numeric * 100) : Math.round(numeric);
+  return Math.max(0, Math.min(100, scaled));
+}
+
+function normalizeStatus(value, score = 74) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw.includes('正解') || raw === 'correct' || raw === 'right') return '正解';
+  if (raw.includes('惜') || raw === 'almost' || raw === 'close' || raw === 'partial') return '惜しい';
+  if (raw.includes('不正解') || raw === 'incorrect' || raw === 'wrong') return '不正解';
+  if (score >= 90) return '正解';
+  if (score >= 70) return '惜しい';
+  return '不正解';
+}
+
+function hasHeavyEnglish(text) {
+  const value = String(text || '');
+  const words = value.match(/[A-Za-z]{4,}/g) || [];
+  const totalLatinLength = words.reduce((sum, word) => sum + word.length, 0);
+  return words.length >= 3 || totalLatinLength >= 18;
+}
+
+function sanitizeAlternatives(alternatives, correctedText) {
+  const source = Array.isArray(alternatives) ? alternatives : [];
+  const cleaned = source
+    .map((item) => String(item || '').trim())
+    .filter((item) => item && /[가-힣]/.test(item) && !hasHeavyEnglish(item))
+    .slice(0, 3);
+
+  if (cleaned.length) return cleaned;
+  return [
+    correctedText,
+    `${correctedText} (丁寧体の別表現も自然です)`,
+  ];
+}
+
+function sanitizeScoringResult(rawResult, modelAnswer) {
+  const correctedText = /[가-힣]/.test(String(rawResult?.correctedText || ''))
+    ? String(rawResult.correctedText).trim()
+    : String(modelAnswer || '').trim();
+  const score = normalizeScore(rawResult?.score, 74);
+  const status = normalizeStatus(rawResult?.status, score);
+
+  let feedback = String(rawResult?.feedback || '').trim();
+  let explanation = String(rawResult?.explanation || '').trim();
+
+  if (!feedback || hasHeavyEnglish(feedback)) {
+    feedback = status === '正解'
+      ? '自然で正しい韓国語です。'
+      : status === '惜しい'
+        ? '意味は伝わっています。助詞や語尾を整えるとさらに自然になります。'
+        : '文法と語順を見直して、もう一度挑戦してみましょう。';
+  }
+
+  if (!explanation || hasHeavyEnglish(explanation)) {
+    explanation = status === '正解'
+      ? 'この文は語順・助詞・語尾のバランスが自然です。'
+      : '助詞(은/는, 이/가, 을/를)と語尾(-요/-니다)の統一を意識すると改善します。';
+  }
+
+  return {
+    status,
+    score,
+    feedback,
+    explanation,
+    correctedText,
+    alternatives: sanitizeAlternatives(rawResult?.alternatives, correctedText),
+  };
+}
+
 function getExternalTtsConfig() {
   return {
     googleAccessToken: process.env.GOOGLE_CLOUD_TTS_ACCESS_TOKEN || '',
@@ -508,13 +580,13 @@ app.post('/api/score-answer', async (req, res) => {
     const result = await askAi({
       provider,
       systemPrompt:
-        'You are a kind Korean teacher for Japanese speakers. Evaluate the learner answer with flexibility for Korean spacing, polite-form choices like 해요 vs 합니다, and everyday expression variations. If the meaning is correct and the sentence is natural, treat it as correct or nearly correct, and return JSON with status, score, feedback, explanation, correctedText, alternatives.',
+        'You are a kind Korean teacher for Japanese speakers. Evaluate with flexibility for Korean spacing, and polite-form variations like 해요/예요/이에요 vs 합니다/입니다. If meaning and grammar are acceptable, treat as 正解 or 惜しい. Return JSON only with fields: status (must be one of 正解/惜しい/不正解), score (0-100), feedback (Japanese), explanation (Japanese), correctedText (Korean), alternatives (Korean examples array). Do not mix English in feedback or explanation.',
       userPrompt: `Prompt: ${prompt}\nModel answer: ${modelAnswer}\nUser answer: ${userAnswer}\nLevel: ${level}`,
       temperature: 0.5,
     });
 
     if (result) {
-      return res.json(result);
+      return res.json(sanitizeScoringResult(result, modelAnswer));
     }
 
     return res.json({
