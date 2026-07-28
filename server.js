@@ -215,10 +215,82 @@ const fallbackQuestionBank = {
   ],
 };
 
+const fallbackReplyBank = {
+  beginner: [
+    {
+      prompt: '友達からのメッセージ',
+      situation: '친구: 今日の夜、少し話せる？',
+      answer: '네, 가능해요. 무슨 일이에요?',
+      hint: '相手の質問に短く返して、次の話題を促す形が自然です。',
+      followUp: '친구: 별일은 아니고, 그냥 오늘 하루 어땠는지 궁금했어.',
+    },
+    {
+      prompt: '友達からのメッセージ',
+      situation: '친구: 明日カフェに行かない？',
+      answer: '좋아요. 몇 시에 만날까요?',
+      hint: '誘いに答えるときは、賛成 + 時間確認が自然です。',
+      followUp: '친구: 오후 2시는 어때?',
+    },
+  ],
+  intermediate: [
+    {
+      prompt: '友達からのメッセージ',
+      situation: '친구: さっき送った写真見た？',
+      answer: '네, 봤어요. 정말 예쁘네요.',
+      hint: '感想を一言添えると会話が続きやすくなります。',
+      followUp: '친구: 그렇지? 다음에 같이 가자.',
+    },
+    {
+      prompt: '友達からのメッセージ',
+      situation: '친구: 週末、引っ越しを手伝ってくれる？',
+      answer: '물론이죠. 몇 시에 가면 될까요?',
+      hint: '手伝えるなら、丁寧に了承して具体的な確認をします。',
+      followUp: '친구: 토요일 오전 10시쯤 오면 돼.',
+    },
+  ],
+  advanced: [
+    {
+      prompt: '友達からのメッセージ',
+      situation: '친구: 例の企画、今日中に見直しておける？',
+      answer: '네, 오늘 안에 검토해서 내일 아침에 보내드릴게요.',
+      hint: '期限と約束を明確にすると自然です。',
+      followUp: '친구: 고마워. 부탁할게!',
+    },
+    {
+      prompt: '友達からのメッセージ',
+      situation: '친구: 来月の旅行、宿だけ先に予約しようか？',
+      answer: '좋아요. 위치랑 가격을 같이 비교해 볼까요?',
+      hint: '提案に乗るときは、次の行動を添えると会話が滑らかです。',
+      followUp: '친구: 응, 내가 몇 군데 골라볼게.',
+    },
+  ],
+};
+
+function getPracticeMode(value) {
+  return String(value || 'translation') === 'reply' ? 'reply' : 'translation';
+}
+
 function getFallbackQuestion(level = 'beginner') {
   const normalizedLevel = ['beginner', 'intermediate', 'advanced'].includes(level) ? level : 'beginner';
   const pool = fallbackQuestionBank[normalizedLevel];
   return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function getFallbackReplyPrompt(level = 'beginner', previousFollowUp = '') {
+  const normalizedLevel = ['beginner', 'intermediate', 'advanced'].includes(level) ? level : 'beginner';
+  const pool = fallbackReplyBank[normalizedLevel];
+  const base = pool[Math.floor(Math.random() * pool.length)];
+  if (!previousFollowUp) {
+    return base;
+  }
+
+  return {
+    ...base,
+    situation: String(previousFollowUp).trim(),
+    prompt: '友達からのメッセージ',
+    answer: base.answer,
+    followUp: base.followUp || '친구: 응, 다음 이야기 이어서 하자.',
+  };
 }
 
 function normalizeScore(value, fallback = 74) {
@@ -259,12 +331,129 @@ function sanitizeAlternatives(alternatives, correctedText) {
   ];
 }
 
+function sanitizeFollowUp(rawResult, fallbackFollowUp) {
+  const source = String(rawResult?.followUp || rawResult?.nextTurn || rawResult?.conversationFollowUp || '').trim();
+  if (source && /[가-힣]/.test(source) && !hasHeavyEnglish(source)) {
+    return source;
+  }
+  return fallbackFollowUp ? String(fallbackFollowUp).trim() : '';
+}
+
+function buildQuestionGenerationPrompts(level, style) {
+  return {
+    systemPrompt: [
+      'You are an expert Korean writing teacher for Japanese learners.',
+      'Create one concise Japanese sentence and its natural Korean answer.',
+      'Rules:',
+      '- The prompt must be in Japanese.',
+      '- The answer must be natural Korean.',
+      '- The hint must be in Japanese and explain the key grammar point briefly.',
+      '- Return valid JSON only with the fields prompt, answer, and hint.',
+      '- Do not add markdown, code fences, or extra text.',
+    ].join(' '),
+    userPrompt: [
+      `Create one ${style} Japanese sentence for a ${level} Korean learner.`,
+      'Use a situation that is natural for everyday study.',
+      'Return JSON only.',
+    ].join(' '),
+  };
+}
+
+function buildReplyGenerationPrompts(level, previousFollowUp = '') {
+  return {
+    systemPrompt: [
+      'You are an expert Korean conversation practice generator for Japanese learners.',
+      'Create a short, natural chat reply exercise based on a friend message.',
+      'Rules:',
+      '- Return valid JSON only with the fields prompt, situation, answer, hint, and followUp.',
+      '- prompt must be a short Japanese label such as 友達からのメッセージ.',
+      '- situation must be the incoming friend message in natural Korean.',
+      '- answer must be one natural Korean reply the learner should practice.',
+      '- hint must be Japanese and explain the key point briefly.',
+      '- followUp must be a short Korean continuation from the friend.',
+      previousFollowUp ? `- Continue naturally from this previous message: ${previousFollowUp}` : '- This is the first turn in the conversation.',
+      '- Keep the situation realistic and everyday.',
+      '- Do not add markdown, code fences, or extra text.',
+    ].join(' '),
+    userPrompt: [
+      `Create one reply training scenario for a ${level} Korean learner.`,
+      'Use a message from a friend in an everyday situation.',
+      previousFollowUp ? `Continue from this prior message: ${previousFollowUp}` : 'Start a new conversation.',
+      'Return JSON only.',
+    ].join(' '),
+  };
+}
+
+function buildScoringPrompts({ prompt, modelAnswer, userAnswer, level }) {
+  return {
+    systemPrompt: [
+      'You are a precise and encouraging Korean writing instructor for Japanese learners.',
+      'Judge the learner answer fairly and conservatively.',
+      'Rules:',
+      '- If the meaning is correct and the grammar is acceptable, mark it as correct even when the wording differs from the model answer.',
+      '- Treat polite-form variations such as 해요 and 합니다 as correct unless the task explicitly requires one style.',
+      '- If the only issue is spacing, mark it as correct and mention spacing in the explanation.',
+      '- Return valid JSON only. Do not add markdown, code fences, or extra text.',
+      '- feedback and explanation must be written in Japanese.',
+      '- correctedText and alternatives must be natural Korean.',
+      '- Use exactly these fields: status, score, feedback, explanation, correctedText, alternatives.',
+      'Examples:',
+      'Input answer: 저는 학교에 갑니다.',
+      'Expected judgment: correct even if the model answer is 저는 학교에 가요.',
+      'Output JSON: {"status":"正解","score":98,"feedback":"自然で正しい韓国語です。","explanation":"丁寧体の違いはありますが、意味と文法は正しいです。","correctedText":"저는 학교에 가요.","alternatives":["저는 학교에 갑니다.","저는 학교에 가요."]}',
+      'Input answer: 저는 학교에갑니다.',
+      'Expected judgment: spacing only.',
+      'Output JSON: {"status":"正解","score":95,"feedback":"意味は正しく伝わっています。","explanation":"分かち書きだけ直すとさらに自然です。","correctedText":"저는 학교에 갑니다.","alternatives":["저는 학교에 가요.","저는 학교에 갑니다."]}',
+    ].join(' '),
+    userPrompt: [
+      `Prompt: ${prompt}`,
+      `Model answer: ${modelAnswer}`,
+      `User answer: ${userAnswer}`,
+      `Level: ${level}`,
+      'Return JSON only.',
+    ].join('\n'),
+  };
+}
+
+function buildReplyScoringPrompts({ prompt, situation, modelAnswer, userAnswer, level }) {
+  return {
+    systemPrompt: [
+      'You are a precise and encouraging Korean conversation coach for Japanese learners.',
+      'Judge replies to friend messages fairly and conservatively.',
+      'Rules:',
+      '- Accept a reply as correct when the meaning is appropriate and the grammar is natural, even if it differs from the sample answer.',
+      '- Treat polite-form variations such as 해요 and 합니다 as correct unless the task explicitly requires one style.',
+      '- If the only issue is spacing, mark it as correct and mention spacing in the explanation.',
+      '- Return valid JSON only with the fields status, score, feedback, explanation, correctedText, alternatives, and followUp.',
+      '- feedback and explanation must be written in Japanese.',
+      '- correctedText, alternatives, and followUp must be natural Korean.',
+      '- Use the sample answer as a reference, not as the only acceptable reply.',
+      'Examples:',
+      'Input reply: 네, 가능해요. 무슨 일이에요?',
+      'Expected judgment: correct for a message asking if the learner can talk tonight.',
+      'Output JSON: {"status":"正解","score":98,"feedback":"自然な返答です。","explanation":"相手の質問に自然に返し、次の話題も促せています。","correctedText":"네, 가능해요. 무슨 일이에요?","alternatives":["네, 괜찮아요. 왜요?","물론이죠. 무슨 일이에요?"],"followUp":"친구: 오늘 잠깐 상담하고 싶은 게 있어."}',
+    ].join(' '),
+    userPrompt: [
+      `Prompt: ${prompt}`,
+      `Situation: ${situation}`,
+      `Model answer: ${modelAnswer}`,
+      `User answer: ${userAnswer}`,
+      `Level: ${level}`,
+      'Return JSON only.',
+    ].join('\n'),
+  };
+}
+
 function sanitizeScoringResult(rawResult, modelAnswer) {
-  const correctedText = /[가-힣]/.test(String(rawResult?.correctedText || ''))
-    ? String(rawResult.correctedText).trim()
+  const correctedTextValue = rawResult?.correctedText || rawResult?.corrected_text || '';
+  const correctedText = /[가-힣]/.test(String(correctedTextValue || ''))
+    ? String(correctedTextValue).trim()
     : String(modelAnswer || '').trim();
-  const score = normalizeScore(rawResult?.score, 74);
-  const status = normalizeStatus(rawResult?.status, score);
+  const inferredStatus = rawResult?.status
+    || (rawResult?.is_correct === true ? '正解' : rawResult?.is_correct === false ? '不正解' : '');
+  const scoreFallback = inferredStatus === '正解' ? 95 : inferredStatus === '不正解' ? 45 : 74;
+  const score = normalizeScore(rawResult?.score, scoreFallback);
+  const status = normalizeStatus(inferredStatus, score);
 
   let feedback = String(rawResult?.feedback || '').trim();
   let explanation = String(rawResult?.explanation || '').trim();
@@ -289,7 +478,38 @@ function sanitizeScoringResult(rawResult, modelAnswer) {
     feedback,
     explanation,
     correctedText,
-    alternatives: sanitizeAlternatives(rawResult?.alternatives, correctedText),
+    alternatives: sanitizeAlternatives(rawResult?.alternatives || rawResult?.alternative_expressions, correctedText),
+    followUp: sanitizeFollowUp(rawResult, ''),
+  };
+}
+
+function sanitizeReplyGenerationResult(rawResult, fallback) {
+  const prompt = String(rawResult?.prompt || fallback.prompt || '友達からのメッセージ').trim();
+  const situation = String(rawResult?.situation || fallback.situation || '').trim();
+  const answer = String(rawResult?.answer || fallback.answer || '').trim();
+  const hint = String(rawResult?.hint || fallback.hint || '').trim();
+  const followUp = sanitizeFollowUp(rawResult, fallback.followUp);
+
+  return {
+    mode: 'reply',
+    prompt,
+    situation,
+    answer,
+    hint,
+    followUp,
+  };
+}
+
+function sanitizeQuestionGenerationResult(rawResult, fallback) {
+  const prompt = String(rawResult?.prompt || fallback.prompt || '').trim();
+  const answer = String(rawResult?.answer || fallback.answer || '').trim();
+  const hint = String(rawResult?.hint || fallback.hint || '').trim();
+
+  return {
+    mode: 'translation',
+    prompt,
+    answer,
+    hint,
   };
 }
 
@@ -530,29 +750,34 @@ app.post('/api/progress', (req, res) => {
 });
 
 app.post('/api/generate-question', async (req, res) => {
-  const { level = 'beginner', style = 'short' } = req.body;
+  const { level = 'beginner', style = 'short', mode = 'translation', previousFollowUp = '' } = req.body;
+  const practiceMode = getPracticeMode(mode);
   const provider = getProvider();
   const hasRequiredKey = Boolean(process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY);
 
   if (!hasRequiredKey) {
     console.warn('No AI API key found. Returning random built-in fallback question.');
-    return res.json(getFallbackQuestion(level));
+    return res.json(practiceMode === 'reply' ? sanitizeReplyGenerationResult(null, getFallbackReplyPrompt(level, previousFollowUp)) : sanitizeQuestionGenerationResult(null, getFallbackQuestion(level)));
   }
 
   try {
+    const prompts = practiceMode === 'reply'
+      ? buildReplyGenerationPrompts(level, previousFollowUp)
+      : buildQuestionGenerationPrompts(level, style);
     const result = await askAi({
       provider,
-      systemPrompt:
-        'You are a Korean language teaching assistant. Create one short Japanese sentence for learners and provide a natural Korean translation and a helpful hint.',
-      userPrompt: `Create one ${style} Japanese sentence for a ${level} Korean learner. Return JSON with fields prompt, answer, hint.`,
-      temperature: 0.7,
+      systemPrompt: prompts.systemPrompt,
+      userPrompt: prompts.userPrompt,
+      temperature: 0.2,
     });
 
     if (result) {
-      return res.json(result);
+      return res.json(practiceMode === 'reply'
+        ? sanitizeReplyGenerationResult(result, getFallbackReplyPrompt(level, previousFollowUp))
+        : sanitizeQuestionGenerationResult(result, getFallbackQuestion(level)));
     }
 
-    return res.json(getFallbackQuestion(level));
+    return res.json(practiceMode === 'reply' ? sanitizeReplyGenerationResult(null, getFallbackReplyPrompt(level, previousFollowUp)) : sanitizeQuestionGenerationResult(null, getFallbackQuestion(level)));
   } catch (error) {
     console.error(`${provider} generation failed:`, error.message);
     res.status(500).json({ error: 'Failed to generate question' });
@@ -560,12 +785,14 @@ app.post('/api/generate-question', async (req, res) => {
 });
 
 app.post('/api/score-answer', async (req, res) => {
-  const { prompt, modelAnswer, userAnswer, level = 'beginner' } = req.body;
+  const { prompt, situation = '', modelAnswer, userAnswer, level = 'beginner', mode = 'translation' } = req.body;
+  const practiceMode = getPracticeMode(mode);
   const provider = getProvider();
   const hasRequiredKey = Boolean(process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY);
 
   if (!hasRequiredKey) {
     console.warn('No AI API key found. Returning built-in fallback scoring.');
+    const fallbackFollowUp = practiceMode === 'reply' ? '친구: 고마워! 조금 있다가 다시 이야기하자.' : '';
     return res.json({
       status: '惜しい',
       score: 74,
@@ -573,22 +800,33 @@ app.post('/api/score-answer', async (req, res) => {
       explanation: 'この文では、助詞や語尾の選び方がポイントです。',
       correctedText: modelAnswer,
       alternatives: ['自然な韓国語ならこの形が近いです', '別解: もう少し柔らかい表現も可能です'],
+      followUp: fallbackFollowUp,
     });
   }
 
   try {
+    const prompts = practiceMode === 'reply'
+      ? buildReplyScoringPrompts({ prompt, situation, modelAnswer, userAnswer, level })
+      : buildScoringPrompts({ prompt, modelAnswer, userAnswer, level });
     const result = await askAi({
       provider,
-      systemPrompt:
-        'You are a kind Korean teacher for Japanese speakers. Evaluate with flexibility for Korean spacing, and polite-form variations like 해요/예요/이에요 vs 합니다/입니다. If meaning and grammar are acceptable, treat as 正解 or 惜しい. Return JSON only with fields: status (must be one of 正解/惜しい/不正解), score (0-100), feedback (Japanese), explanation (Japanese), correctedText (Korean), alternatives (Korean examples array). Do not mix English in feedback or explanation.',
-      userPrompt: `Prompt: ${prompt}\nModel answer: ${modelAnswer}\nUser answer: ${userAnswer}\nLevel: ${level}`,
-      temperature: 0.5,
+      systemPrompt: prompts.systemPrompt,
+      userPrompt: prompts.userPrompt,
+      temperature: 0.2,
     });
 
     if (result) {
+      if (practiceMode === 'reply') {
+        const fallback = getFallbackReplyPrompt(level);
+        return res.json({
+          ...sanitizeScoringResult(result, modelAnswer),
+          followUp: sanitizeFollowUp(result, fallback.followUp),
+        });
+      }
       return res.json(sanitizeScoringResult(result, modelAnswer));
     }
 
+    const fallbackReply = practiceMode === 'reply' ? getFallbackReplyPrompt(level) : null;
     return res.json({
       status: '惜しい',
       score: 74,
@@ -596,6 +834,7 @@ app.post('/api/score-answer', async (req, res) => {
       explanation: 'この文では、助詞や語尾の選び方がポイントです。',
       correctedText: modelAnswer,
       alternatives: ['自然な韓国語ならこの形が近いです', '別解: もう少し柔らかい表現も可能です'],
+      followUp: fallbackReply ? fallbackReply.followUp : '',
     });
   } catch (error) {
     console.error(`${provider} scoring failed:`, error.message);
@@ -782,6 +1021,11 @@ if (require.main === module) {
 
 module.exports = {
   app,
+  buildReplyGenerationPrompts,
+  buildReplyScoringPrompts,
+  getFallbackReplyPrompt,
+  buildQuestionGenerationPrompts,
+  buildScoringPrompts,
   validateRegistrationInput,
 };
 

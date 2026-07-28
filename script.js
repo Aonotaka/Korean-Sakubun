@@ -1,7 +1,9 @@
 const levelSelect = document.getElementById('levelSelect');
+const practiceModeSelect = document.getElementById('practiceModeSelect');
 const questionCountSelect = document.getElementById('questionCountSelect');
 const startBtn = document.getElementById('startBtn');
 const generateBtn = document.getElementById('generateBtn');
+const scenarioText = document.getElementById('scenarioText');
 const promptText = document.getElementById('promptText');
 const answerInput = document.getElementById('answerInput');
 const submitBtn = document.getElementById('submitBtn');
@@ -12,10 +14,13 @@ const feedbackStatus = document.getElementById('feedbackStatus');
 const feedbackText = document.getElementById('feedbackText');
 const feedbackExplanation = document.getElementById('feedbackExplanation');
 const alternatives = document.getElementById('alternatives');
+const followUpBox = document.getElementById('followUpBox');
+const chatTranscript = document.getElementById('chatTranscript');
 const nextBtn = document.getElementById('nextBtn');
 const speakBtn = document.getElementById('speakBtn');
 const progressBadge = document.getElementById('progressBadge');
 const levelBadge = document.getElementById('levelBadge');
+const promptLabel = document.querySelector('.prompt-label');
 const sessionStatus = document.getElementById('sessionStatus');
 const ttsModeSelect = document.getElementById('ttsModeSelect');
 const ttsStatus = document.getElementById('ttsStatus');
@@ -114,7 +119,9 @@ const questionBank = {
 let currentQuestions = [];
 let currentIndex = 0;
 let currentLevel = 'beginner';
+let currentPracticeMode = 'translation';
 let sessionWrongQuestions = [];
+let replyTranscriptLastTurn = -1;
 let progressState = {
   attempted: 0,
   correct: 0,
@@ -140,6 +147,41 @@ function updateAiStatus(message, ready = false) {
   sessionStatus.textContent = message;
   statusPill.textContent = ready ? 'AI接続: 利用可能' : 'AI接続: フォールバック';
   statusPill.className = `status-pill${ready ? ' is-ready' : ' is-offline'}`;
+}
+
+function getPracticeModeLabel(mode) {
+  return mode === 'reply' ? '友達メッセージ返信' : '日本語→韓国語';
+}
+
+function getSessionQuestionCount(requestedCount, mode) {
+  const baseCount = Number(requestedCount) || 5;
+  if (mode === 'reply') {
+    return Math.max(baseCount * 2, 8);
+  }
+  return baseCount;
+}
+
+function clearChatTranscript() {
+  if (!chatTranscript) return;
+  chatTranscript.innerHTML = '';
+  chatTranscript.hidden = true;
+  chatTranscript.classList.remove('chat-transcript--reply');
+}
+
+function appendChatBubble(role, title, text) {
+  if (!chatTranscript || !text) return null;
+  const bubble = document.createElement('div');
+  bubble.className = `chat-bubble chat-bubble--${role}`;
+  const meta = document.createElement('span');
+  meta.className = 'chat-bubble__meta';
+  meta.textContent = title;
+  const content = document.createElement('div');
+  content.textContent = text;
+  bubble.appendChild(meta);
+  bubble.appendChild(content);
+  chatTranscript.appendChild(bubble);
+  chatTranscript.hidden = false;
+  return bubble;
 }
 
 function updateTtsStatus(message) {
@@ -593,27 +635,47 @@ function addReviewItem(question, status) {
 
 async function startSession() {
   currentLevel = levelSelect.value;
-  const count = Number(questionCountSelect.value);
+  currentPracticeMode = practiceModeSelect?.value === 'reply' ? 'reply' : 'translation';
+  const count = getSessionQuestionCount(questionCountSelect.value, currentPracticeMode);
   sessionWrongQuestions = [];
   startBtn.disabled = true;
   startBtn.textContent = '生成中...';
-  updateAiStatus('AIで問題を生成しています...', false);
+  updateAiStatus(`${getPracticeModeLabel(currentPracticeMode)}を生成しています...`, false);
   currentQuestions = [];
   currentIndex = 0;
   feedbackBox.hidden = true;
   if (sessionResultBox) sessionResultBox.hidden = true;
   hintBox.hidden = true;
+  if (followUpBox) followUpBox.hidden = true;
+  clearChatTranscript();
+  replyTranscriptLastTurn = -1;
   answerInput.value = '';
 
   try {
     const generated = [];
+    let previousFollowUp = '';
     for (let i = 0; i < count; i += 1) {
-      generated.push(await generateQuestion());
+      generated.push(await generateQuestion(previousFollowUp));
+      if (currentPracticeMode === 'reply') {
+        previousFollowUp = generated[generated.length - 1]?.followUp || previousFollowUp;
+      }
     }
     currentQuestions = generated;
-    updateAiStatus('AI生成の問題でトレーニングを始めます。', true);
+    updateAiStatus(`${getPracticeModeLabel(currentPracticeMode)}のトレーニングを始めます。`, true);
   } catch (error) {
-    currentQuestions = [...questionBank[currentLevel]].slice(0, count);
+    if (currentPracticeMode === 'reply') {
+      currentQuestions = Array.from({ length: count }, () => ({
+        prompt: '友達からのメッセージ',
+        situation: '친구: 오늘 시간 있으면 커피 마실래?',
+        answer: '좋아요. 몇 시에 만날까요?',
+        hint: '誘いには、賛成 + 時間確認で返すと自然です。',
+        followUp: '친구: 3시쯤 어때?',
+        mode: 'reply',
+        source: 'fallback',
+      }));
+    } else {
+      currentQuestions = [...questionBank[currentLevel]].slice(0, count);
+    }
     updateAiStatus('AI生成に失敗したため、サンプル問題で進めます。', false);
   }
 
@@ -634,27 +696,53 @@ function hasMismatchByKeyword(prompt, answer) {
   return false;
 }
 
-async function generateQuestion() {
+async function generateQuestion(previousFollowUp = '') {
   try {
     const response = await fetch('/api/generate-question', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ level: currentLevel, style: 'short' }),
+      body: JSON.stringify({ level: currentLevel, style: 'short', mode: currentPracticeMode, previousFollowUp }),
     });
     const data = await response.json();
-    if (data && data.prompt && data.answer && !hasMismatchByKeyword(data.prompt, data.answer)) {
-      return { prompt: data.prompt, answer: data.answer, hint: data.hint, source: 'ai' };
+    if (currentPracticeMode === 'reply') {
+      if (data && data.situation && data.answer) {
+        return {
+          prompt: data.prompt || '友達からのメッセージ',
+          situation: data.situation,
+          answer: data.answer,
+          hint: data.hint,
+          followUp: data.followUp || '',
+          mode: 'reply',
+          source: 'ai',
+        };
+      }
+    } else if (data && data.prompt && data.answer && !hasMismatchByKeyword(data.prompt, data.answer)) {
+      return { prompt: data.prompt, answer: data.answer, hint: data.hint, mode: 'translation', source: 'ai' };
     }
     console.warn('AI generated low-quality question pair. Falling back to built-in bank.');
   } catch (error) {
     console.warn('AI generation failed', error);
   }
 
+  if (currentPracticeMode === 'reply') {
+    const fallbackReply = {
+      prompt: '友達からのメッセージ',
+      situation: '친구: 오늘 시간 있으면 커피 마실래?',
+      answer: '좋아요. 몇 시에 만날까요?',
+      hint: '誘いには、賛成 + 時間確認で返すと自然です。',
+      followUp: '친구: 3시쯤 어때?',
+      mode: 'reply',
+      source: 'fallback',
+    };
+    return fallbackReply;
+  }
+
   const fallback = questionBank[currentLevel][Math.floor(Math.random() * questionBank[currentLevel].length)];
-  return { ...fallback, source: 'fallback' };
+  return { ...fallback, mode: 'translation', source: 'fallback' };
 }
 
 async function generateSingleQuestion() {
+  currentPracticeMode = practiceModeSelect?.value === 'reply' ? 'reply' : 'translation';
   const question = await generateQuestion();
   currentQuestions = [question];
   currentIndex = 0;
@@ -674,12 +762,40 @@ function showQuestion() {
     return;
   }
 
-  promptText.textContent = question.prompt;
+  if (scenarioText) {
+    const isReplyMode = question.mode === 'reply' || currentPracticeMode === 'reply';
+    scenarioText.hidden = !isReplyMode;
+    scenarioText.textContent = isReplyMode ? (question.prompt || '友達からのメッセージ') : '';
+    promptText.textContent = isReplyMode ? (question.situation || '返信内容を韓国語で入力してください。') : question.prompt;
+    if (chatTranscript) {
+      chatTranscript.hidden = !isReplyMode;
+    }
+  } else {
+    promptText.textContent = question.prompt;
+  }
+  if (promptLabel) {
+    const isReplyMode = question.mode === 'reply' || currentPracticeMode === 'reply';
+    promptLabel.textContent = isReplyMode ? '友達のメッセージ' : '日本語の文';
+  }
+  if (nextBtn) {
+    const isReplyMode = question.mode === 'reply' || currentPracticeMode === 'reply';
+    nextBtn.textContent = isReplyMode ? '次のメッセージへ' : '次の問題へ';
+  }
+  if (question.mode === 'reply' || currentPracticeMode === 'reply') {
+    if (replyTranscriptLastTurn !== currentIndex) {
+      appendChatBubble('friend', '友達', question.situation || question.prompt || 'メッセージ');
+      replyTranscriptLastTurn = currentIndex;
+    }
+    if (chatTranscript) {
+      chatTranscript.classList.add('chat-transcript--reply');
+    }
+  }
   progressBadge.textContent = `${currentIndex + 1} / ${currentQuestions.length}`;
   levelBadge.textContent = getLevelLabel(currentLevel);
   hintBox.hidden = true;
   feedbackBox.hidden = true;
   if (sessionResultBox) sessionResultBox.hidden = true;
+  if (followUpBox) followUpBox.hidden = true;
   if (firstQuestionGuide) {
     firstQuestionGuide.hidden = currentIndex !== 0;
   }
@@ -780,7 +896,14 @@ async function evaluateAnswer() {
     const response = await fetch('/api/score-answer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: question.prompt, modelAnswer: question.answer, userAnswer, level: currentLevel }),
+      body: JSON.stringify({
+        prompt: question.prompt,
+        situation: question.situation || '',
+        modelAnswer: question.answer,
+        userAnswer,
+        level: currentLevel,
+        mode: question.mode || currentPracticeMode,
+      }),
     });
 
     if (response.ok) {
@@ -794,6 +917,11 @@ async function evaluateAnswer() {
       explanation = data.explanation || explanation;
       correctedText = data.correctedText || correctedText;
       alternativesList = data.alternatives || alternativesList;
+      if (followUpBox) {
+        const replyFollowUp = data.followUp || question.followUp || '';
+        followUpBox.textContent = replyFollowUp ? `会話の続き: ${replyFollowUp}` : '';
+        followUpBox.hidden = !replyFollowUp;
+      }
       modelAnswerText = correctedText;
     }
   } catch (error) {
@@ -801,22 +929,29 @@ async function evaluateAnswer() {
   }
 
   const similarity = similarityRatio(normalizedUser, normalizedExpected);
+  const isReplyMode = question.mode === 'reply' || currentPracticeMode === 'reply';
 
-  if (normalizedUser === normalizedExpected || similarity >= 0.84) {
+  if (!isReplyMode) {
+    if (normalizedUser === normalizedExpected || similarity >= 0.84) {
+      status = '正解';
+      score = Math.max(score, normalizedUser === normalizedExpected ? 100 : 90);
+      feedback = '自然な韓国語です。文法の選び方も良いです。';
+    } else if (similarity >= 0.7 || (
+      normalizedUser.includes('가') ||
+      normalizedUser.includes('어요') ||
+      normalizedUser.includes('니다') ||
+      normalizedUser.includes('해요') ||
+      normalizedUser.includes('합니다') ||
+      normalizedUser.includes('어요')
+    )) {
+      status = '惜しい';
+      score = Math.max(score, 72);
+      feedback = '意味は近いですが、語尾・分かち書き・助詞の選び方でさらに自然になります。';
+    }
+  } else if (normalizedUser === normalizedExpected) {
     status = '正解';
-    score = Math.max(score, normalizedUser === normalizedExpected ? 100 : 90);
-    feedback = '自然な韓国語です。文法の選び方も良いです。';
-  } else if (similarity >= 0.7 || (
-    normalizedUser.includes('가') ||
-    normalizedUser.includes('어요') ||
-    normalizedUser.includes('니다') ||
-    normalizedUser.includes('해요') ||
-    normalizedUser.includes('합니다') ||
-    normalizedUser.includes('어요')
-  )) {
-    status = '惜しい';
-    score = Math.max(score, 72);
-    feedback = '意味は近いですが、語尾・分かち書き・助詞の選び方でさらに自然になります。';
+    score = Math.max(score, 100);
+    feedback = '自然な返答です。';
   }
 
   statusClass = statusClassFromStatus(status);
@@ -838,6 +973,16 @@ async function evaluateAnswer() {
     .slice(0, 3);
   if (!alternativesList.length) {
     alternativesList = ['別解: 似た意味の丁寧表現でも正解になります'];
+  }
+
+  if (isReplyMode) {
+    const replyFollowUp = (followUpBox && followUpBox.textContent ? followUpBox.textContent.replace(/^会話の続き:\s*/, '') : '') || question.followUp || '';
+    appendChatBubble('user', 'あなた', userAnswer || '（未入力）');
+    appendChatBubble(
+      'assistant',
+      'AI添削',
+      `${status} / ${score}点\n${feedback}\n${correctedText ? `修正: ${correctedText}\n` : ''}${explanation}${replyFollowUp ? `\n次の発話: ${replyFollowUp}` : ''}`
+    );
   }
 
   const structureAdvice = buildStructureAdvice(userAnswer, correctedText, question.hint);
@@ -866,7 +1011,7 @@ async function evaluateAnswer() {
   feedbackStatus.textContent = status;
   feedbackStatus.className = `feedback-status ${statusClass}`;
   feedbackText.textContent = `採点: ${score}点`;
-  modelAnswerBox.innerHTML = `<strong>模範解答</strong><div>${modelAnswerText}</div>`;
+  modelAnswerBox.innerHTML = `<strong>${isReplyMode ? '模範返信' : '模範解答'}</strong><div>${modelAnswerText}</div>`;
   feedbackExplanation.textContent = `${feedback}\n\n${structureAdvice}\n\n${explanation}\n\n修正案: ${correctedText}`;
   alternatives.innerHTML = '';
   alternativesList.forEach((item) => {
@@ -874,7 +1019,14 @@ async function evaluateAnswer() {
     chip.textContent = item;
     alternatives.appendChild(chip);
   });
-  feedbackBox.hidden = false;
+  if (isReplyMode) {
+    feedbackBox.hidden = true;
+    if (followUpBox) {
+      followUpBox.hidden = true;
+    }
+  } else {
+    feedbackBox.hidden = false;
+  }
 }
 
 function shareToX() {

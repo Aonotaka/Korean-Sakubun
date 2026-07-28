@@ -22,7 +22,7 @@ function getApiKey(provider) {
 }
 
 function getModel(provider) {
-  return process.env.AI_MODEL || (provider === 'groq' ? 'llama-3.1-8b-instant' : provider === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o-mini');
+  return process.env.AI_MODEL || (provider === 'groq' ? 'llama-3.3-70b-versatile' : provider === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o-mini');
 }
 
 function parseJsonSafely(raw) {
@@ -43,7 +43,7 @@ function parseJsonSafely(raw) {
   }
 }
 
-async function askAi({ provider = getProvider(), systemPrompt, userPrompt, temperature = 0.7 }) {
+async function askAi({ provider = getProvider(), systemPrompt, userPrompt, temperature = 0.2 }) {
   const selectedProvider = provider.toLowerCase();
   const apiKey = getApiKey(selectedProvider);
   if (!apiKey) {
@@ -160,5 +160,6 @@ async function askAi({ provider = getProvider(), systemPrompt, userPrompt, tempe
 module.exports = {
   askAi,
   getProvider,
+  getModel,
   DEFAULT_PROVIDER,
 };

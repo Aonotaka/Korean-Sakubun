@@ -198,6 +198,13 @@
             </select>
           </label>
           <label>
+            練習モード
+            <select id="practiceModeSelect">
+              <option value="translation">日本語→韓国語</option>
+              <option value="reply">友達メッセージ返信</option>
+            </select>
+          </label>
+          <label>
             問題数
             <select id="questionCountSelect">
               <option value="5">5問</option>
@@ -221,6 +228,8 @@
             <span id="levelBadge" class="badge badge--soft">初級</span>
           </div>
 
+          <div id="chatTranscript" class="chat-transcript" hidden></div>
+          <p id="scenarioText" class="panel__hint" hidden></p>
           <p class="prompt-label">日本語の文</p>
           <h3 id="promptText">セッションを開始してください</h3>
 
@@ -261,6 +270,7 @@
             <div id="modelAnswerBox" class="model-answer-box"></div>
             <p id="feedbackExplanation"></p>
             <div id="alternatives" class="alternatives"></div>
+            <div id="followUpBox" class="model-answer-box" hidden></div>
             <div class="actions-row">
               <button id="speakBtn" class="btn btn--secondary" type="button">音声で聞く</button>
               <button id="nextBtn" class="btn btn--secondary">次の問題へ</button>

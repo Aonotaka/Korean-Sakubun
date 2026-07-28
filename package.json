@@ -4,7 +4,8 @@
   "description": "AI-powered Korean writing practice app",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node tests/auth-validation.test.js && node tests/ai-config.test.js"
   },
   "dependencies": {
     "dotenv": "^16.4.1",
