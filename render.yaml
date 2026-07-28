@@ -5,6 +5,7 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /
     envVars:
       - key: NODE_ENV
         value: production
@@ -12,3 +13,16 @@ services:
         value: 10000
       - key: AI_PROVIDER
         value: groq
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ADMIN_EMAIL
+        value: admin@example.com
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: ADMIN_SECRET_PATH
+        value: /korean-admin-secret
+      # Optional external TTS (choose one provider)
+      - key: GOOGLE_CLOUD_TTS_ACCESS_TOKEN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false

@@ -17,6 +17,8 @@ const speakBtn = document.getElementById('speakBtn');
 const progressBadge = document.getElementById('progressBadge');
 const levelBadge = document.getElementById('levelBadge');
 const sessionStatus = document.getElementById('sessionStatus');
+const ttsModeSelect = document.getElementById('ttsModeSelect');
+const ttsStatus = document.getElementById('ttsStatus');
 const attemptCount = document.getElementById('attemptCount');
 const statusPill = document.createElement('span');
 const correctCount = document.getElementById('correctCount');
@@ -24,6 +26,9 @@ const streakCount = document.getElementById('streakCount');
 const todaySolvedCount = document.getElementById('todaySolvedCount');
 const todayCorrectCount = document.getElementById('todayCorrectCount');
 const todayAccuracy = document.getElementById('todayAccuracy');
+const learningStreakDays = document.getElementById('learningStreakDays');
+const dailyChart = document.getElementById('dailyChart');
+const weaknessTags = document.getElementById('weaknessTags');
 const reviewBtn = document.getElementById('reviewBtn');
 const reviewList = document.getElementById('reviewList');
 const registerForm = document.getElementById('registerForm');
@@ -34,6 +39,15 @@ const registerNameInput = document.getElementById('registerName');
 const registerEmailInput = document.getElementById('registerEmail');
 const registerUserIdInput = document.getElementById('registerUserId');
 const registerPasswordInput = document.getElementById('registerPassword');
+const firstQuestionGuide = document.getElementById('firstQuestionGuide');
+
+let koreanVoice = null;
+let koreanVoices = [];
+let cloudTtsAvailable = false;
+let ttsMode = 'browser';
+let currentCloudAudio = null;
+let externalTtsProvider = 'auto';
+const ttsModeStorageKey = 'korean-sakubun-tts-mode';
 
 function fillTemplate(template, replacements) {
   return template.replace(/\{(\w+)\}/g, (_, key) => replacements[key] ?? '');
@@ -292,7 +306,18 @@ const questionBank = {
 let currentQuestions = [];
 let currentIndex = 0;
 let currentLevel = 'beginner';
-let progressState = { attempted: 0, correct: 0, streak: 0, reviewQueue: [], todaySolved: 0, todayCorrect: 0, todayKey: '' };
+let progressState = {
+  attempted: 0,
+  correct: 0,
+  streak: 0,
+  reviewQueue: [],
+  todaySolved: 0,
+  todayCorrect: 0,
+  todayKey: '',
+  dailyHistory: {},
+  practiceDayKeys: [],
+  weakTagCounts: {},
+};
 const progressKey = 'korean-sakubun-progress';
 
 statusPill.className = 'status-pill';
@@ -308,12 +333,254 @@ function updateAiStatus(message, ready = false) {
   statusPill.className = `status-pill${ready ? ' is-ready' : ' is-offline'}`;
 }
 
+function updateTtsStatus(message) {
+  if (!ttsStatus) return;
+  ttsStatus.textContent = `音声状態: ${message}`;
+}
+
+function loadTtsModePreference() {
+  try {
+    const stored = localStorage.getItem(ttsModeStorageKey);
+    if (stored === 'browser' || stored === 'cloud') {
+      ttsMode = stored;
+    }
+  } catch (error) {
+    console.warn('Could not load TTS mode preference', error);
+  }
+}
+
+function saveTtsModePreference(mode) {
+  try {
+    localStorage.setItem(ttsModeStorageKey, mode);
+  } catch (error) {
+    console.warn('Could not save TTS mode preference', error);
+  }
+}
+
+async function fetchCloudTtsStatus() {
+  try {
+    const response = await fetch('/api/tts/status');
+    if (!response.ok) {
+      cloudTtsAvailable = false;
+      return;
+    }
+    const data = await response.json();
+    cloudTtsAvailable = Boolean(data.available);
+    externalTtsProvider = data.provider || 'auto';
+  } catch (error) {
+    cloudTtsAvailable = false;
+    externalTtsProvider = 'auto';
+  }
+}
+
+function syncTtsModeUi() {
+  if (ttsModeSelect) {
+    const cloudOption = ttsModeSelect.querySelector('option[value="cloud"]');
+    if (cloudOption) {
+      cloudOption.disabled = !cloudTtsAvailable;
+      cloudOption.textContent = cloudTtsAvailable ? 'Cloud TTS (外部)' : 'Cloud TTS (未設定)';
+    }
+
+    if (ttsMode === 'cloud' && !cloudTtsAvailable) {
+      ttsMode = 'browser';
+      saveTtsModePreference(ttsMode);
+    }
+
+    ttsModeSelect.value = ttsMode;
+  } else {
+    ttsMode = 'browser';
+  }
+
+  updateTtsStatus(ttsMode === 'cloud' ? 'Cloud TTS を使用' : 'ブラウザ韓国語音声 (無料) を使用');
+}
+
 function getTodayKey() {
   const now = new Date();
   return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
 }
 
+function formatDayKey(date) {
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+}
+
+function parseDayKey(dayKey) {
+  const [year, month, day] = dayKey.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function getRecentDayKeys(days = 7) {
+  const result = [];
+  const base = new Date();
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const d = new Date(base);
+    d.setDate(base.getDate() - i);
+    result.push(formatDayKey(d));
+  }
+  return result;
+}
+
+function ensureProgressShape() {
+  progressState.dailyHistory = progressState.dailyHistory || {};
+  progressState.practiceDayKeys = Array.isArray(progressState.practiceDayKeys) ? progressState.practiceDayKeys : [];
+  progressState.weakTagCounts = progressState.weakTagCounts || {};
+}
+
+function getLearningStreakDays() {
+  const practiced = new Set(progressState.practiceDayKeys || []);
+  let streak = 0;
+  const cursor = new Date();
+
+  while (practiced.has(formatDayKey(cursor))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  return streak;
+}
+
+function registerPracticeDay(dayKey) {
+  if (!progressState.practiceDayKeys.includes(dayKey)) {
+    progressState.practiceDayKeys.push(dayKey);
+    progressState.practiceDayKeys.sort((a, b) => parseDayKey(a) - parseDayKey(b));
+  }
+}
+
+function bumpWeakTag(tag) {
+  progressState.weakTagCounts[tag] = (progressState.weakTagCounts[tag] || 0) + 1;
+}
+
+function analyzeWeaknessTags(userAnswer, correctedText, status) {
+  if (status === '正解') return;
+
+  const compactUser = userAnswer.replace(/\s+/g, '');
+  const compactCorrected = correctedText.replace(/\s+/g, '');
+
+  if (!/(은|는|이|가|을|를|에|에서|와|과|도)/.test(compactUser) && /(은|는|이|가|을|를|에|에서|와|과|도)/.test(compactCorrected)) {
+    bumpWeakTag('助詞');
+  }
+
+  if (!/\s/.test(userAnswer) && /\s/.test(correctedText)) {
+    bumpWeakTag('分かち書き');
+  }
+
+  if (/(다\.?$|니다\.?$)/.test(compactUser) && /(요\.?$)/.test(compactCorrected)) {
+    bumpWeakTag('語尾レベル');
+  }
+
+  if (compactUser && compactCorrected && compactUser !== compactCorrected) {
+    bumpWeakTag('語順');
+  }
+}
+
+function buildStructureAdvice(userAnswer, correctedText, baseHint) {
+  const tips = [];
+  if (!/(은|는|이|가|을|를|에|에서|와|과|도)/.test(userAnswer) && /(은|는|이|가|을|를|에|에서|와|과|도)/.test(correctedText)) {
+    tips.push('助詞(은/는, 이/가, 을/를)の位置を見直すと自然になります。');
+  }
+  if (!/\s/.test(userAnswer) && /\s/.test(correctedText)) {
+    tips.push('分かち書きを入れると読みやすく、意味の切れ目が伝わります。');
+  }
+  if (/(다\.?$|니다\.?$)/.test(userAnswer) && /(요\.?$)/.test(correctedText)) {
+    tips.push('語尾の丁寧さを1文の中で統一しましょう。');
+  }
+  if (!tips.length) {
+    tips.push(baseHint || '語順と語尾を整えると、よりネイティブらしく聞こえます。');
+  }
+  return `構文アドバイス: ${tips.join(' ')}`;
+}
+
+function renderDailyChart() {
+  if (!dailyChart) return;
+  const keys = getRecentDayKeys(7);
+  const values = keys.map((key) => progressState.dailyHistory[key] || 0);
+  const max = Math.max(...values, 1);
+
+  dailyChart.innerHTML = '';
+  keys.forEach((key, index) => {
+    const item = document.createElement('div');
+    item.className = 'daily-chart__item';
+
+    const barWrap = document.createElement('div');
+    barWrap.className = 'daily-chart__bar-wrap';
+
+    const bar = document.createElement('div');
+    bar.className = 'daily-chart__bar';
+    bar.style.height = `${Math.max((values[index] / max) * 100, values[index] ? 8 : 0)}%`;
+
+    const label = document.createElement('span');
+    label.className = 'daily-chart__label';
+    const [, month, day] = key.split('-');
+    label.textContent = `${month}/${day}`;
+
+    const value = document.createElement('span');
+    value.className = 'daily-chart__value';
+    value.textContent = `${values[index]}問`;
+
+    barWrap.appendChild(bar);
+    item.appendChild(barWrap);
+    item.appendChild(label);
+    item.appendChild(value);
+    dailyChart.appendChild(item);
+  });
+}
+
+function renderWeaknessTags() {
+  if (!weaknessTags) return;
+  const entries = Object.entries(progressState.weakTagCounts || {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  if (!entries.length) {
+    weaknessTags.innerHTML = '<span class="weakness-tag">まだデータがありません</span>';
+    return;
+  }
+
+  weaknessTags.innerHTML = '';
+  entries.forEach(([tag, count]) => {
+    const chip = document.createElement('span');
+    chip.className = 'weakness-tag';
+    chip.textContent = `${tag} ${count}`;
+    weaknessTags.appendChild(chip);
+  });
+}
+
+function refreshKoreanVoices() {
+  if (!('speechSynthesis' in window)) return;
+  const allVoices = window.speechSynthesis.getVoices();
+  koreanVoices = allVoices.filter((voice) => (voice.lang || '').toLowerCase().startsWith('ko'));
+
+  if (!koreanVoices.length) {
+    koreanVoice = null;
+    return;
+  }
+
+  const ranked = [...koreanVoices].sort((a, b) => {
+    const score = (voice) => {
+      const name = (voice.name || '').toLowerCase();
+      let s = 0;
+      if ((voice.lang || '').toLowerCase() === 'ko-kr') s += 40;
+      if (voice.localService) s += 12;
+      if (name.includes('google')) s += 18;
+      if (name.includes('microsoft')) s += 16;
+      if (name.includes('korean') || name.includes('한국')) s += 10;
+      return s;
+    };
+    return score(b) - score(a);
+  });
+
+  koreanVoice = ranked[0] || null;
+}
+
+function splitKoreanSentences(text) {
+  const matches = text.replace(/\n+/g, ' ').match(/[^.!?。！？]+[.!?。！？]?/g);
+  return (matches || []).map((line) => line.trim()).filter(Boolean);
+}
+
+function extractKoreanText(text) {
+  const allowed = text.match(/[가-힣ㄱ-ㅎㅏ-ㅣ0-9\s.,!?\-~]+/g);
+  return (allowed || []).join(' ').replace(/\s+/g, ' ').trim();
+}
+
 function normalizeProgressState() {
+  ensureProgressShape();
   const todayKey = getTodayKey();
   if (progressState.todayKey !== todayKey) {
     progressState.todaySolved = 0;
@@ -345,11 +612,16 @@ function updateProgressUI() {
   attemptCount.textContent = progressState.attempted;
   correctCount.textContent = progressState.correct;
   streakCount.textContent = progressState.streak;
+  if (learningStreakDays) {
+    learningStreakDays.textContent = `${getLearningStreakDays()}日`;
+  }
   todaySolvedCount.textContent = progressState.todaySolved;
   todayCorrectCount.textContent = progressState.todayCorrect;
   const todayAccuracyValue = progressState.todaySolved ? Math.round((progressState.todayCorrect / progressState.todaySolved) * 100) : 0;
   todayAccuracy.textContent = `${todayAccuracyValue}%`;
   renderReviewList();
+  renderDailyChart();
+  renderWeaknessTags();
 }
 
 async function syncProgressToServer() {
@@ -361,6 +633,52 @@ async function syncProgressToServer() {
     });
   } catch (error) {
     console.warn('Progress sync failed', error);
+  }
+}
+
+async function speakWithCloudTts(text) {
+  const response = await fetch('/api/tts/synthesize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, provider: externalTtsProvider }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Cloud TTS failed');
+  }
+
+  const data = await response.json();
+  if (!data.audioBase64) {
+    throw new Error('Cloud TTS returned no audio');
+  }
+
+  const src = `data:audio/mp3;base64,${data.audioBase64}`;
+  if (currentCloudAudio) {
+    currentCloudAudio.pause();
+  }
+  currentCloudAudio = new Audio(src);
+  await currentCloudAudio.play();
+  updateTtsStatus(`外部TTS再生中 (${data.provider || externalTtsProvider}, ${data.voice || 'default'})`);
+}
+
+function speakWithBrowserTts(text) {
+  refreshKoreanVoices();
+  window.speechSynthesis.cancel();
+  splitKoreanSentences(text).forEach((segment) => {
+    const utterance = new SpeechSynthesisUtterance(segment);
+    utterance.lang = koreanVoice?.lang || 'ko-KR';
+    if (koreanVoice) utterance.voice = koreanVoice;
+    utterance.rate = 1.01;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    window.speechSynthesis.speak(utterance);
+  });
+
+  if (koreanVoice) {
+    updateTtsStatus(`ブラウザ音声再生中 (${koreanVoice.name})`);
+  } else {
+    updateTtsStatus('ブラウザ標準音声で再生中');
   }
 }
 
@@ -454,6 +772,7 @@ function showQuestion() {
     promptText.textContent = 'お疲れさまでした。もう一度挑戦できます。';
     answerInput.value = '';
     feedbackBox.hidden = true;
+    if (firstQuestionGuide) firstQuestionGuide.hidden = true;
     return;
   }
 
@@ -462,6 +781,9 @@ function showQuestion() {
   levelBadge.textContent = getLevelLabel(currentLevel);
   hintBox.hidden = true;
   feedbackBox.hidden = true;
+  if (firstQuestionGuide) {
+    firstQuestionGuide.hidden = currentIndex !== 0;
+  }
   answerInput.value = '';
   answerInput.focus();
 }
@@ -534,9 +856,15 @@ async function evaluateAnswer() {
     feedback = '意味は近いですが、語尾・分かち書き・助詞の選び方でさらに自然になります。';
   }
 
+  const structureAdvice = buildStructureAdvice(userAnswer, correctedText, question.hint);
+  analyzeWeaknessTags(userAnswer, correctedText, status);
+
   normalizeProgressState();
+  const todayKey = getTodayKey();
   progressState.attempted += 1;
   progressState.todaySolved += 1;
+  progressState.dailyHistory[todayKey] = (progressState.dailyHistory[todayKey] || 0) + 1;
+  registerPracticeDay(todayKey);
   if (status === '正解') {
     progressState.correct += 1;
     progressState.todayCorrect += 1;
@@ -552,7 +880,7 @@ async function evaluateAnswer() {
   feedbackStatus.className = `feedback-status ${statusClass}`;
   feedbackText.textContent = `採点: ${score}点`;
   modelAnswerBox.innerHTML = `<strong>模範解答</strong><div>${modelAnswerText}</div>`;
-  feedbackExplanation.textContent = `${feedback}\n\n${explanation}\n\n修正案: ${correctedText}`;
+  feedbackExplanation.textContent = `${feedback}\n\n${structureAdvice}\n\n${explanation}\n\n修正案: ${correctedText}`;
   alternatives.innerHTML = '';
   alternativesList.forEach((item) => {
     const chip = document.createElement('span');
@@ -577,18 +905,33 @@ function shareToX() {
   window.open(xUrl, '_blank', 'noopener,noreferrer');
 }
 
-function speakFeedbackText() {
+async function speakFeedbackText() {
   if (!('speechSynthesis' in window)) {
     sessionStatus.textContent = 'このブラウザでは音声再生に対応していません。';
     return;
   }
 
-  const text = `${feedbackStatus.textContent}. ${feedbackText.textContent}. ${feedbackExplanation.textContent}`;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'ja-JP';
-  utterance.rate = 1;
-  window.speechSynthesis.speak(utterance);
+  const modelAnswerText = modelAnswerBox?.querySelector('div')?.textContent || '';
+  const fallbackText = feedbackExplanation?.textContent || '';
+  const text = extractKoreanText(modelAnswerText || fallbackText);
+
+  if (!text) {
+    sessionStatus.textContent = '読み上げる韓国語の内容がまだありません。';
+    return;
+  }
+
+  try {
+    if (ttsMode === 'cloud' && cloudTtsAvailable) {
+      window.speechSynthesis.cancel();
+      await speakWithCloudTts(text);
+      return;
+    }
+  } catch (error) {
+    console.warn('Cloud TTS failed, falling back to browser voice', error);
+    updateTtsStatus('Cloud TTS失敗。ブラウザ音声に切り替えます。');
+  }
+
+  speakWithBrowserTts(text);
 }
 
 function goToNextQuestion() {
@@ -659,6 +1002,21 @@ registerForm.addEventListener('submit', async (event) => {
 });
 
 window.addEventListener('DOMContentLoaded', () => {
+  refreshKoreanVoices();
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.onvoiceschanged = refreshKoreanVoices;
+  }
+
+  loadTtsModePreference();
+  fetchCloudTtsStatus().then(syncTtsModeUi);
+  if (ttsModeSelect) {
+    ttsModeSelect.addEventListener('change', (event) => {
+      ttsMode = event.target.value === 'cloud' ? 'cloud' : 'browser';
+      saveTtsModePreference(ttsMode);
+      syncTtsModeUi();
+    });
+  }
+
   loadProgress();
   updateAiStatus('AI接続状態を確認しています...', false);
   promptText.textContent = 'レベルを選んで「セッション開始」を押してください。';

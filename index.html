@@ -62,9 +62,17 @@
 
       <div class="hero__content" id="top">
         <div class="hero__intro">
-          <p class="eyebrow">日本人の韓国語学習者のために</p>
-          <img src="KoreanSakubunLogo.png" alt="ひたすら韓国語作文のロゴ" class="hero__logo" loading="lazy" />
-          <h1>ひたすら韓国語作文</h1>
+          <div class="hero__eyebrow-row">
+            <span class="hero__pill">韓国語作文 × AI</span>
+            <span class="hero__pill hero__pill--secondary">日本人学習者向け</span>
+          </div>
+          <div class="hero__brand-wrap">
+            <img src="KoreanSakubunLogo.png" alt="ひたすら韓国語作文のロゴ" class="hero__logo" loading="lazy" />
+            <div>
+              <p class="eyebrow">日本人の韓国語学習者のために</p>
+              <h1>ひたすら韓国語作文</h1>
+            </div>
+          </div>
           <p class="hero__lead">
             AIが即時添削！サクサク解く韓国語作文トレーニング。日本語の文を見て、韓国語で自然に書く力を育てます。
           </p>
@@ -201,6 +209,7 @@
             <button id="generateBtn" class="btn btn--secondary">AIで問題を生成</button>
           </div>
           <p id="sessionStatus" class="session-status">AI接続状態: 取得中...</p>
+          <p id="ttsStatus" class="session-status">音声状態: ブラウザ韓国語音声 (無料)</p>
           <p class="panel__hint">音声読み上げボタンは、回答後に使えます。</p>
         </div>
 
@@ -215,6 +224,16 @@
 
           <label class="input-label" for="answerInput">韓国語で答える</label>
           <textarea id="answerInput" rows="4" placeholder="例: 내일 친구랑 영화를 보러 갈 거예요."></textarea>
+
+          <div id="firstQuestionGuide" class="guide-box" hidden>
+            <h4>最初の1問ガイド</h4>
+            <p>入力例: 저는 오늘 친구를 만나요.</p>
+            <ul>
+              <li>助詞ミス: 은/는, 이/가, 을/를 を文に合わせる</li>
+              <li>語尾ミス: 합니다/해요/해 の丁寧さを統一する</li>
+              <li>語順ミス: 時間表現は文頭に置くと自然になりやすい</li>
+            </ul>
+          </div>
 
           <div class="actions-row">
             <button id="hintBtn" class="btn btn--secondary">ヒントを見る</button>
@@ -245,10 +264,15 @@
             <div><strong id="attemptCount">0</strong><span>解いた数</span></div>
             <div><strong id="correctCount">0</strong><span>正解数</span></div>
             <div><strong id="streakCount">0</strong><span>連続正解</span></div>
+            <div><strong id="learningStreakDays">0日</strong><span>連続学習日数</span></div>
             <div><strong id="todaySolvedCount">0</strong><span>今日解いた数</span></div>
             <div><strong id="todayCorrectCount">0</strong><span>今日の正解数</span></div>
             <div><strong id="todayAccuracy">0%</strong><span>今日の正解率</span></div>
           </div>
+          <h3 class="subhead">直近7日</h3>
+          <div id="dailyChart" class="daily-chart" aria-label="直近7日の学習量"></div>
+          <h3 class="subhead">苦手になりやすい文法タグ</h3>
+          <div id="weaknessTags" class="weakness-tags"></div>
         </div>
         <div class="panel">
           <h2>アカウント</h2>

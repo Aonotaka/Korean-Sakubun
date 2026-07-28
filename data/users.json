@@ -2,8 +2,8 @@
   {
     "id": "admin",
     "name": "管理者",
-    "email": "aonotaka96@gmail.com",
-    "password": "pbkdf2$49feeff66cae7359603e7ce6d16ecb22$aab0975810bc8e6f16234298854a605871c1c5ab30ebcda4d002d267f6d837d1",
+    "email": "admin@example.com",
+    "password": "pbkdf2$5dbb766c955b4d2110ce138753d1de44$51f5047ed2fe91cbf0e7e990b25f91945552acfb41c08c2d00b149adf14059d5",
     "role": "admin",
     "progress": {
       "attempted": 0,
