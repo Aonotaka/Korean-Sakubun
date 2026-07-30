@@ -10,7 +10,9 @@
       "correct": 0,
       "streak": 0,
       "reviewQueue": []
-    }
+    },
+    "plan": "free",
+    "premiumMemories": []
   },
   {
     "id": "user-001",
@@ -23,7 +25,9 @@
       "correct": 0,
       "streak": 0,
       "reviewQueue": []
-    }
+    },
+    "plan": "free",
+    "premiumMemories": []
   },
   {
     "id": "test-user",
@@ -36,7 +40,9 @@
       "correct": 0,
       "streak": 0,
       "reviewQueue": []
-    }
+    },
+    "plan": "free",
+    "premiumMemories": []
   },
   {
     "id": "sample-user",
@@ -49,6 +55,8 @@
       "correct": 0,
       "streak": 0,
       "reviewQueue": []
-    }
+    },
+    "plan": "free",
+    "premiumMemories": []
   }
 ]
