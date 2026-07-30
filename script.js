@@ -1119,7 +1119,13 @@ function showQuestion() {
   if (imagePromptBox && imagePromptImage && imagePromptCaption) {
     imagePromptBox.hidden = !isImageMode;
     if (isImageMode) {
-      imagePromptImage.src = question.imageUrl || buildLocalImageDataUrl(question.scene || '街の風景');
+      const fallbackImage = buildLocalImageDataUrl(question.scene || '街の風景');
+      imagePromptImage.onerror = () => {
+        if (imagePromptImage.src !== fallbackImage) {
+          imagePromptImage.src = fallbackImage;
+        }
+      };
+      imagePromptImage.src = question.imageUrl || fallbackImage;
       const lines = [];
       if (question.scene) lines.push(`画像の場面: ${question.scene}`);
       if (question.targetWords) lines.push(`目安語数: ${question.targetWords}`);

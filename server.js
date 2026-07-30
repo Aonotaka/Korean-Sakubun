@@ -467,15 +467,33 @@ function escapeSvgText(value) {
 
 function buildSceneSvgDataUri(sceneText = '公園で人と犬が散歩している風景') {
   const scene = escapeSvgText(sceneText).slice(0, 64);
+  const raw = String(sceneText || '').toLowerCase();
+  const isPark = /공원|公園|park/.test(raw);
+  const isCafe = /카페|喫茶|cafe/.test(raw);
+  const isRain = /비|雨|rain/.test(raw);
+  const isMeeting = /회의|会議|meeting/.test(raw);
+  const isMarket = /시장|市場|market/.test(raw);
+  const isNight = /밤|夜|night/.test(raw);
+  const skyColor = isNight ? '#1e293b' : isRain ? '#dbeafe' : isCafe ? '#fff3e0' : '#dbeafe';
+  const groundColor = isPark ? '#86efac' : isMarket ? '#fed7aa' : isMeeting ? '#e5e7eb' : '#c7f9cc';
+  const sunColor = isNight ? '#f8fafc' : '#facc15';
+  const accentColor = isCafe ? '#8b5cf6' : isMeeting ? '#ef4444' : '#0f766e';
+  const mainLabel = isPark ? 'Park Scene' : isCafe ? 'Cafe Scene' : isRain ? 'Rainy Scene' : isMeeting ? 'Meeting Scene' : isMarket ? 'Market Scene' : 'AI Scene';
   const svg = [
     '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="768" viewBox="0 0 1024 768">',
-    '<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ffe8d8"/><stop offset="100%" stop-color="#dbeafe"/></linearGradient></defs>',
+    `<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${skyColor}"/><stop offset="100%" stop-color="#f8fafc"/></linearGradient></defs>`,
     '<rect width="1024" height="768" fill="url(#bg)"/>',
-    '<circle cx="210" cy="170" r="86" fill="#facc15" fill-opacity="0.36"/>',
-    '<rect x="100" y="430" width="820" height="228" rx="30" fill="#ffffff" fill-opacity="0.88"/>',
-    '<rect x="70" y="526" width="884" height="164" rx="38" fill="#84cc16" fill-opacity="0.34"/>',
-    '<text x="512" y="360" text-anchor="middle" fill="#0f172a" font-size="42" font-family="Noto Sans JP, sans-serif">AI Scene</text>',
-    `<text x="512" y="492" text-anchor="middle" fill="#334155" font-size="30" font-family="Noto Sans JP, sans-serif">${scene}</text>`,
+    `<circle cx="170" cy="150" r="92" fill="${sunColor}" fill-opacity="0.34"/>`,
+    `<rect x="0" y="500" width="1024" height="268" fill="${groundColor}" fill-opacity="0.72"/>`,
+    isPark ? '<circle cx="230" cy="455" r="26" fill="#16a34a"/><rect x="222" y="480" width="16" height="90" rx="8" fill="#7c4a1d"/><circle cx="230" cy="420" r="44" fill="#22c55e" fill-opacity="0.8"/>' : '',
+    isCafe ? '<rect x="120" y="360" width="220" height="160" rx="18" fill="#fff7ed" stroke="#fdba74"/><rect x="180" y="400" width="100" height="60" rx="12" fill="#dbeafe"/><circle cx="200" cy="430" r="16" fill="#93c5fd"/><circle cx="260" cy="430" r="16" fill="#93c5fd"/>' : '',
+    isRain ? '<g opacity="0.7"><path d="M250 280l-14 28" stroke="#3b82f6" stroke-width="4"/><path d="M310 250l-14 28" stroke="#3b82f6" stroke-width="4"/><path d="M370 290l-14 28" stroke="#3b82f6" stroke-width="4"/><path d="M430 260l-14 28" stroke="#3b82f6" stroke-width="4"/></g><path d="M170 460c90-120 170-120 260 0" fill="#94a3b8" opacity="0.55"/>' : '',
+    isMeeting ? '<rect x="160" y="300" width="700" height="260" rx="26" fill="#ffffff" stroke="#cbd5e1"/><rect x="210" y="400" width="600" height="34" rx="17" fill="#e2e8f0"/><rect x="260" y="340" width="500" height="30" rx="15" fill="#cbd5e1"/>' : '',
+    isMarket ? '<rect x="120" y="360" width="760" height="130" rx="20" fill="#fff7ed" stroke="#fdba74"/><rect x="120" y="330" width="760" height="50" rx="18" fill="#fb7185" opacity="0.8"/>' : '',
+    '<rect x="96" y="420" width="832" height="200" rx="32" fill="#ffffff" fill-opacity="0.84"/>',
+    `<text x="512" y="346" text-anchor="middle" fill="#0f172a" font-size="40" font-family="Noto Sans JP, sans-serif">${mainLabel}</text>`,
+    `<text x="512" y="490" text-anchor="middle" fill="#334155" font-size="28" font-family="Noto Sans JP, sans-serif">${scene}</text>`,
+    `<text x="512" y="540" text-anchor="middle" fill="${accentColor}" font-size="20" font-family="Noto Sans JP, sans-serif">No text, no logo, no watermark</text>`,
     '</svg>',
   ].join('');
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
@@ -842,12 +860,6 @@ async function generateOpenAiImageDataUri(prompt) {
     console.warn('OpenAI image generation request error:', error.message);
     return '';
   }
-}
-
-function buildPollinationsImageUrl(prompt) {
-  const fallbackPrompt = String(prompt || 'realistic city park scene with people walking').trim();
-  const query = encodeURIComponent(`${fallbackPrompt}, photorealistic, no text, no watermark`);
-  return `https://image.pollinations.ai/prompt/${query}?width=1024&height=768&nologo=true&seed=${Date.now()}`;
 }
 
 function getExternalTtsConfig() {
