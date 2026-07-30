@@ -210,7 +210,7 @@ async function refreshAuthState() {
   if (authStatus) {
     authStatus.textContent = currentSessionUser
       ? `${currentSessionUser.name || 'ユーザー'}としてログイン中です。`
-      : '未ログインです。登録またはGoogleログインで進捗を保存できます。';
+      : '未ログインです。Googleログインで進捗を保存できます。';
   }
 }
 
@@ -1491,37 +1491,39 @@ reviewBtn.addEventListener('click', () => {
   updateAiStatus('復習候補を更新しました。', false);
 });
 
-registerForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const name = registerNameInput.value;
-  const email = registerEmailInput.value;
-  const userId = registerUserIdInput.value;
-  const password = registerPasswordInput.value;
-  const validation = window.validateRegistrationInput ? window.validateRegistrationInput({ name, email, userId, password }) : null;
+if (registerForm) {
+  registerForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const name = registerNameInput.value;
+    const email = registerEmailInput.value;
+    const userId = registerUserIdInput.value;
+    const password = registerPasswordInput.value;
+    const validation = window.validateRegistrationInput ? window.validateRegistrationInput({ name, email, userId, password }) : null;
 
-  if (validation && !validation.isValid) {
-    authStatus.textContent = validation.errors[0] || '入力内容を確認してください';
-    return;
-  }
+    if (validation && !validation.isValid) {
+      authStatus.textContent = validation.errors[0] || '入力内容を確認してください';
+      return;
+    }
 
-  authStatus.textContent = '登録中...';
-  const response = await fetch('/api/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, email, userId, password }),
+    authStatus.textContent = '登録中...';
+    const response = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, userId, password }),
+    });
+
+    if (response.ok) {
+      authStatus.textContent = 'アカウントを作成しました。学習進捗を保存できます。';
+      registerForm.reset();
+      await refreshAuthState();
+      await applyServerProgressIfAvailable();
+      await syncProgressToServer();
+    } else {
+      const data = await response.json();
+      authStatus.textContent = data.error || '登録できませんでした';
+    }
   });
-
-  if (response.ok) {
-    authStatus.textContent = 'アカウントを作成しました。学習進捗を保存できます。';
-    registerForm.reset();
-    await refreshAuthState();
-    await applyServerProgressIfAvailable();
-    await syncProgressToServer();
-  } else {
-    const data = await response.json();
-    authStatus.textContent = data.error || '登録できませんでした';
-  }
-});
+}
 
 if (feedbackForm) {
   feedbackForm.addEventListener('submit', submitFeedbackComment);
@@ -1553,7 +1555,7 @@ if (topLogoutBtn) {
       googleAuthStatus.textContent = 'ログアウトしました。';
     }
     if (authStatus) {
-      authStatus.textContent = '未ログインです。登録またはGoogleログインで進捗を保存できます。';
+      authStatus.textContent = '未ログインです。Googleログインで進捗を保存できます。';
     }
   });
 }

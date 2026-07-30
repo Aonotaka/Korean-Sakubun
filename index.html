@@ -389,22 +389,14 @@
         </div>
         <div class="panel">
           <h2>アカウント</h2>
-          <p>登録すると、学習進捗を保存できます。</p>
+          <p>Googleログインで学習進捗を保存できます。</p>
           <div class="google-auth">
             <p class="panel__hint">Googleアカウントでログインして進捗を管理できます。</p>
             <div id="googleSignInButton"></div>
             <p id="googleAuthStatus" class="session-status"></p>
           </div>
-          <form id="registerForm" class="auth-form">
-            <input id="registerName" placeholder="名前" required />
-            <input id="registerEmail" type="email" placeholder="メール" required />
-            <input id="registerUserId" placeholder="ユーザーID" required />
-            <input id="registerPassword" type="password" placeholder="強いパスワード" required />
-            <button class="btn btn--primary" type="submit">登録する</button>
-          </form>
           <p id="authStatus" class="session-status"></p>
-          <p class="panel__hint">パスワードは12文字以上・大文字・小文字・数字・記号を含めてください。</p>
-          <p class="panel__hint">または <a href="/login">ログインページ</a> から入れます。</p>
+          <p class="panel__hint"><a href="/login?provider=google">ログインページ</a> からもGoogleログインできます。</p>
         </div>
         <div class="panel">
           <h2>復習リスト</h2>

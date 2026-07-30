@@ -42,28 +42,8 @@
           <p class="panel__hint">Googleアカウントの情報を使って、このサイトの学習アカウントを管理できます。</p>
           <div id="googleSignInButton"></div>
           <p id="googleAuthStatus" class="session-status"></p>
-        </div>
-        <div class="panel">
-          <h2>アカウント作成</h2>
-          <p class="panel__hint">強いパスワードとユーザーIDを設定できます。</p>
-          <form id="registerForm" class="auth-form">
-            <label>名前<input id="registerName" required /></label>
-            <label>メールアドレス<input id="registerEmail" type="email" required /></label>
-            <label>ユーザーID<input id="registerUserId" placeholder="例: korean-student" /></label>
-            <label>パスワード<input id="registerPassword" type="password" required /></label>
-            <button class="btn btn--primary" type="submit">登録してログイン</button>
-          </form>
-          <p id="registerMessage" class="session-status"></p>
-        </div>
-        <div class="panel">
-          <h2>ログイン</h2>
-          <form id="loginForm" class="auth-form">
-            <label>メールアドレス<input id="loginEmail" type="email" required /></label>
-            <label>パスワード<input id="loginPassword" type="password" required /></label>
-            <button class="btn btn--secondary" type="submit">ログイン</button>
-          </form>
-          <p id="loginMessage" class="session-status"></p>
-          <p class="panel__hint">管理者アカウントはサーバー側で厳重に管理します。</p>
+          <p class="panel__hint">通常ユーザーのログインはGoogleアカウントのみ対応です。</p>
+          <p class="panel__hint">管理者ログインは管理者専用パスの画面から行ってください。</p>
         </div>
       </section>
     </main>

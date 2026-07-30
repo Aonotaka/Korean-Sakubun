@@ -1,9 +1,7 @@
-const registerForm = document.getElementById('registerForm');
-const loginForm = document.getElementById('loginForm');
-const registerMessage = document.getElementById('registerMessage');
-const loginMessage = document.getElementById('loginMessage');
 const googleSignInButton = document.getElementById('googleSignInButton');
 const googleAuthStatus = document.getElementById('googleAuthStatus');
+const loginForm = document.getElementById('loginForm');
+const loginMessage = document.getElementById('loginMessage');
 
 function shouldAutoPromptGoogle() {
   const params = new URLSearchParams(window.location.search);
@@ -31,9 +29,7 @@ async function handleGoogleCredentialResponse(response) {
       return;
     }
 
-    if (googleAuthStatus) {
-      googleAuthStatus.textContent = `${data.name || 'ユーザー'}さんでログインしました。トップページへ移動します...`;
-    }
+    if (googleAuthStatus) googleAuthStatus.textContent = `${data.name || 'ユーザー'}さんでログインしました。トップページへ移動します...`;
     setTimeout(() => {
       window.location.href = '/';
     }, 500);
@@ -84,45 +80,30 @@ async function initGoogleSignIn() {
   }
 }
 
-registerForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const payload = {
-    name: document.getElementById('registerName').value,
-    email: document.getElementById('registerEmail').value,
-    userId: document.getElementById('registerUserId').value,
-    password: document.getElementById('registerPassword').value,
-  };
+if (loginForm) {
+  // Reserved for admin password login pages that reuse this script.
+  loginForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const payload = {
+      email: document.getElementById('loginEmail').value,
+      password: document.getElementById('loginPassword').value,
+    };
 
-  const response = await fetch('/api/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (response.ok) {
+      if (loginMessage) loginMessage.textContent = 'ログインしました。トップページへ移動します...';
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 500);
+      return;
+    }
+    if (loginMessage) loginMessage.textContent = data.error || 'ログインできませんでした';
   });
-  const data = await response.json();
-  registerMessage.textContent = response.ok ? '登録できました。トップページに戻って学習を続けられます。' : data.error || '登録できませんでした';
-});
-
-loginForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const payload = {
-    email: document.getElementById('loginEmail').value,
-    password: document.getElementById('loginPassword').value,
-  };
-
-  const response = await fetch('/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json();
-  if (response.ok) {
-    loginMessage.textContent = 'ログインしました。トップページへ移動します...';
-    setTimeout(() => {
-      window.location.href = '/';
-    }, 500);
-    return;
-  }
-  loginMessage.textContent = data.error || 'ログインできませんでした';
-});
+}
 
 initGoogleSignIn();

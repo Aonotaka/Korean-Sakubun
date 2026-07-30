@@ -584,7 +584,9 @@ function buildImageGenerationPrompts(level) {
       '- scene must be a short Japanese scene summary.',
       '- answer must be one natural Korean sample description (1-2 sentences).',
       '- hint must be in Japanese and brief.',
-      '- imagePrompt must be a concise English prompt for generating an illustration of the scene.',
+      '- imagePrompt must be a detailed English prompt for generating a realistic image of the scene.',
+      '- imagePrompt must include: location, subjects, action, time/light, camera framing, and mood.',
+      '- imagePrompt must explicitly say: no text, no letters, no watermark, no logo.',
       `- targetWords must match this word range: ${profile.targetWords}.`,
       `- vocabFocus must align with this focus: ${profile.vocabFocus}.`,
       `- grammarFocus must align with this focus: ${profile.grammarFocus}.`,
@@ -804,6 +806,13 @@ async function generateOpenAiImageDataUri(prompt) {
   if (!apiKey) return '';
 
   try {
+    const basePrompt = String(prompt || 'A realistic everyday scene for Korean writing practice.').trim();
+    const refinedPrompt = [
+      basePrompt,
+      'photorealistic, natural lighting, clear composition, medium detail',
+      'no text, no letters, no watermark, no logo, no UI elements',
+    ].join(', ');
+
     const response = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: {
@@ -812,8 +821,10 @@ async function generateOpenAiImageDataUri(prompt) {
       },
       body: JSON.stringify({
         model: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
-        prompt: String(prompt || 'A friendly everyday Korean learning scene illustration.'),
+        prompt: refinedPrompt,
         size: '1024x1024',
+        quality: 'high',
+        background: 'auto',
         response_format: 'b64_json',
       }),
     });
@@ -831,6 +842,12 @@ async function generateOpenAiImageDataUri(prompt) {
     console.warn('OpenAI image generation request error:', error.message);
     return '';
   }
+}
+
+function buildPollinationsImageUrl(prompt) {
+  const fallbackPrompt = String(prompt || 'realistic city park scene with people walking').trim();
+  const query = encodeURIComponent(`${fallbackPrompt}, photorealistic, no text, no watermark`);
+  return `https://image.pollinations.ai/prompt/${query}?width=1024&height=768&nologo=true&seed=${Date.now()}`;
 }
 
 function getExternalTtsConfig() {
@@ -1014,37 +1031,7 @@ app.get('/api/auth/google/config', (_req, res) => {
 });
 
 app.post('/api/auth/register', (req, res) => {
-  const { name, email, password, userId } = req.body;
-  const normalizedEmail = String(email || '').trim().toLowerCase();
-  const users = readJson(USERS_FILE, []);
-  const validation = validateRegistrationInput({ name, email: normalizedEmail, password, userId });
-
-  if (!validation.isValid) {
-    return res.status(400).json({ error: validation.errors[0] || '入力内容を確認してください', errors: validation.errors });
-  }
-  if (users.some((candidate) => candidate.email.toLowerCase() === normalizedEmail)) {
-    return res.status(409).json({ error: 'このメールアドレスはすでに登録されています' });
-  }
-
-  const generatedId = normalizeUserId(userId) || buildUserId(name, `user-${Date.now()}`);
-  if (users.some((candidate) => candidate.id === generatedId)) {
-    return res.status(409).json({ error: 'このユーザーIDはすでに使われています' });
-  }
-
-  const user = {
-    id: generatedId,
-    name: String(name).trim(),
-    email: normalizedEmail,
-    password: hashPassword(password),
-    role: 'user',
-    progress: { attempted: 0, correct: 0, streak: 0, reviewQueue: [] },
-    authProvider: 'password',
-    avatarUrl: '',
-  };
-  users.push(user);
-  saveUsers(users);
-  setSession(res, user);
-  res.json({ id: user.id, name: user.name, email: user.email, role: user.role, avatarUrl: user.avatarUrl || '', authProvider: 'password' });
+  return res.status(403).json({ error: 'ユーザー登録はGoogleログインをご利用ください' });
 });
 
 app.post('/api/auth/login', (req, res) => {
@@ -1054,6 +1041,12 @@ app.post('/api/auth/login', (req, res) => {
   if (!user) {
     return res.status(401).json({ error: 'メールアドレスまたはパスワードが違います' });
   }
+
+  // Keep password login for admin route only; regular users should use Google login.
+  if (user.role !== 'admin') {
+    return res.status(403).json({ error: '通常ユーザーはGoogleログインをご利用ください' });
+  }
+
   setSession(res, user);
   res.json({ id: user.id, name: user.name, email: user.email, role: user.role, avatarUrl: user.avatarUrl || '', authProvider: user.authProvider || 'password' });
 });
@@ -1162,7 +1155,11 @@ app.post('/api/generate-question', async (req, res) => {
       return res.json(sanitizeReplyGenerationResult(null, getFallbackReplyPrompt(level, previousFollowUp)));
     }
     if (practiceMode === 'image') {
-      return res.json(sanitizeImageGenerationResult(null, getFallbackImageQuestion(level)));
+      const fallback = getFallbackImageQuestion(level);
+      return res.json({
+        ...sanitizeImageGenerationResult(null, fallback),
+        imageUrl: buildPollinationsImageUrl(fallback.scene || 'realistic daily scene'),
+      });
     }
     return res.json(sanitizeQuestionGenerationResult(null, getFallbackQuestion(level)));
   }
@@ -1192,7 +1189,7 @@ app.post('/api/generate-question', async (req, res) => {
         const generatedImageUrl = await generateOpenAiImageDataUri(preferredImagePrompt);
         return res.json({
           ...sanitized,
-          imageUrl: generatedImageUrl || sanitized.imageUrl || fallback.imageUrl || buildSceneSvgDataUri(sanitized.scene || fallback.scene),
+          imageUrl: generatedImageUrl || buildPollinationsImageUrl(preferredImagePrompt) || sanitized.imageUrl || fallback.imageUrl || buildSceneSvgDataUri(sanitized.scene || fallback.scene),
         });
       }
 
@@ -1203,7 +1200,11 @@ app.post('/api/generate-question', async (req, res) => {
       return res.json(sanitizeReplyGenerationResult(null, getFallbackReplyPrompt(level, previousFollowUp)));
     }
     if (practiceMode === 'image') {
-      return res.json(sanitizeImageGenerationResult(null, getFallbackImageQuestion(level)));
+      const fallback = getFallbackImageQuestion(level);
+      return res.json({
+        ...sanitizeImageGenerationResult(null, fallback),
+        imageUrl: buildPollinationsImageUrl(fallback.scene || 'realistic daily scene'),
+      });
     }
     return res.json(sanitizeQuestionGenerationResult(null, getFallbackQuestion(level)));
   } catch (error) {
