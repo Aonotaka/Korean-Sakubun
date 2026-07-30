@@ -1170,7 +1170,7 @@ app.post('/api/generate-question', async (req, res) => {
       const fallback = getFallbackImageQuestion(level);
       return res.json({
         ...sanitizeImageGenerationResult(null, fallback),
-        imageUrl: buildPollinationsImageUrl(fallback.scene || 'realistic daily scene'),
+        imageUrl: buildSceneSvgDataUri(fallback.scene || 'realistic daily scene'),
       });
     }
     return res.json(sanitizeQuestionGenerationResult(null, getFallbackQuestion(level)));
@@ -1201,7 +1201,7 @@ app.post('/api/generate-question', async (req, res) => {
         const generatedImageUrl = await generateOpenAiImageDataUri(preferredImagePrompt);
         return res.json({
           ...sanitized,
-          imageUrl: generatedImageUrl || buildPollinationsImageUrl(preferredImagePrompt) || sanitized.imageUrl || fallback.imageUrl || buildSceneSvgDataUri(sanitized.scene || fallback.scene),
+          imageUrl: generatedImageUrl || sanitized.imageUrl || fallback.imageUrl || buildSceneSvgDataUri(sanitized.scene || fallback.scene),
         });
       }
 
@@ -1215,7 +1215,7 @@ app.post('/api/generate-question', async (req, res) => {
       const fallback = getFallbackImageQuestion(level);
       return res.json({
         ...sanitizeImageGenerationResult(null, fallback),
-        imageUrl: buildPollinationsImageUrl(fallback.scene || 'realistic daily scene'),
+        imageUrl: buildSceneSvgDataUri(fallback.scene || 'realistic daily scene'),
       });
     }
     return res.json(sanitizeQuestionGenerationResult(null, getFallbackQuestion(level)));
