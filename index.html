@@ -59,6 +59,17 @@
           <a href="/learning-tips">学習のコツ</a>
           <a href="/blog">ブログ</a>
         </div>
+        <div class="topbar__account" aria-live="polite">
+          <a id="topLoginLink" href="/login" class="btn btn--secondary btn--small">ログイン</a>
+          <button id="topLogoutBtn" class="btn btn--secondary btn--small" type="button" hidden>ログアウト</button>
+          <div id="topProfile" class="top-profile" hidden>
+            <img id="topProfileAvatar" class="top-profile__avatar" alt="ユーザーアイコン" />
+            <div class="top-profile__meta">
+              <span id="topProfileName" class="top-profile__name">未ログイン</span>
+              <span id="topProfileState" class="top-profile__state">未ログイン</span>
+            </div>
+          </div>
+        </div>
       </nav>
 
       <div class="hero__content" id="top">
@@ -376,6 +387,11 @@
         <div class="panel">
           <h2>アカウント</h2>
           <p>登録すると、学習進捗を保存できます。</p>
+          <div class="google-auth">
+            <p class="panel__hint">Googleアカウントでログインして進捗を管理できます。</p>
+            <div id="googleSignInButton"></div>
+            <p id="googleAuthStatus" class="session-status"></p>
+          </div>
           <form id="registerForm" class="auth-form">
             <input id="registerName" placeholder="名前" required />
             <input id="registerEmail" type="email" placeholder="メール" required />
@@ -412,6 +428,7 @@
     </footer>
 
     <script src="services/validation.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="script.js"></script>
   </body>
 </html>

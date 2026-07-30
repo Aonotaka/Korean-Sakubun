@@ -105,6 +105,51 @@ img {
   gap: 0.9rem;
 }
 
+.topbar__account {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.top-profile {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.34rem 0.56rem;
+  border-radius: 999px;
+  border: 1px solid rgba(31, 95, 191, 0.22);
+  background: rgba(31, 95, 191, 0.08);
+}
+
+.top-profile__avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid rgba(31, 95, 191, 0.25);
+  object-fit: cover;
+  background: #ffffff;
+}
+
+.top-profile__meta {
+  display: grid;
+  line-height: 1.15;
+}
+
+.top-profile__name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.top-profile__state {
+  font-size: 0.72rem;
+  color: var(--accent-secondary);
+}
+
+.top-profile__state.is-offline {
+  color: var(--muted);
+}
+
 .topbar__links a {
   text-decoration: none;
   color: var(--muted);
@@ -333,6 +378,11 @@ h1 {
   transition: transform 0.2s ease, opacity 0.2s ease;
 }
 
+.btn--small {
+  padding: 0.4rem 0.62rem;
+  font-size: 0.84rem;
+}
+
 .btn:hover {
   transform: translateY(-1px);
 }
@@ -553,6 +603,12 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+}
+
+.google-auth {
+  margin-bottom: 0.9rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px dashed rgba(95, 107, 122, 0.26);
 }
 
 .panel__head {
@@ -1258,6 +1314,11 @@ textarea {
     border-radius: 20px;
     flex-direction: column;
     gap: 0.8rem;
+  }
+
+  .topbar__account {
+    width: 100%;
+    justify-content: center;
   }
 
   .hero__content {

@@ -84,6 +84,60 @@ function buildUserId(name, fallback = 'user') {
   return normalized ? normalized : fallback;
 }
 
+function buildUniqueUserId(users, preferredBase, fallbackPrefix = 'user') {
+  const base = buildUserId(preferredBase, fallbackPrefix);
+  const existing = new Set((users || []).map((user) => String(user.id || '').trim()));
+  if (!existing.has(base)) {
+    return base;
+  }
+
+  for (let i = 2; i < 10000; i += 1) {
+    const candidate = `${base}-${i}`;
+    if (!existing.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  return `${base}-${Date.now()}`;
+}
+
+async function verifyGoogleIdToken(idToken) {
+  const token = String(idToken || '').trim();
+  if (!token) {
+    return { ok: false, error: 'Google認証トークンがありません' };
+  }
+
+  try {
+    const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(token)}`);
+    if (!response.ok) {
+      return { ok: false, error: 'Googleトークンの検証に失敗しました' };
+    }
+
+    const data = await response.json();
+    const configuredClientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+    if (configuredClientId && data.aud !== configuredClientId) {
+      return { ok: false, error: 'GoogleクライアントIDが一致しません' };
+    }
+
+    const emailVerified = String(data.email_verified || '').toLowerCase() === 'true' || data.email_verified === true;
+    if (!data.sub || !data.email || !emailVerified) {
+      return { ok: false, error: 'Googleアカウント情報を確認できませんでした' };
+    }
+
+    return {
+      ok: true,
+      profile: {
+        sub: String(data.sub),
+        email: String(data.email).trim().toLowerCase(),
+        name: String(data.name || '').trim() || 'Googleユーザー',
+        picture: String(data.picture || '').trim(),
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: 'Google検証処理でエラーが発生しました' };
+  }
+}
+
 function readJson(filePath, fallback) {
   try {
     if (!fs.existsSync(filePath)) {
@@ -273,12 +327,18 @@ const fallbackImageBank = {
       scene: '公園で人と犬が散歩している午後の風景',
       answer: '공원에서 사람들이 강아지와 함께 산책하고 있어요.',
       hint: '場所(공원에서)と動作(-고 있어요)を入れると自然です。',
+      targetWords: '6-12',
+      vocabFocus: '日常の場所・人・動作',
+      grammarFocus: '-고 있어요, 에서/와 함께',
     },
     {
       prompt: '画像を見て、韓国語で1〜2文の描写を書いてください。',
       scene: 'カフェで二人がノートPCを見ながら話している場面',
       answer: '카페에서 두 사람이 노트북을 보면서 이야기하고 있어요.',
       hint: '同時動作は -면서 を使うと描写しやすいです。',
+      targetWords: '7-13',
+      vocabFocus: '場所・人数・基本動詞',
+      grammarFocus: '-면서, -고 있어요',
     },
   ],
   intermediate: [
@@ -287,12 +347,18 @@ const fallbackImageBank = {
       scene: '雨の中で傘を差しながらバス停で待っている人たち',
       answer: '비가 오는 날에 사람들이 우산을 쓰고 버스 정류장에서 기다리고 있어요.',
       hint: '背景(비가 오는 날)と場所(버스 정류장에서)を組み合わせると自然です。',
+      targetWords: '10-18',
+      vocabFocus: '天気・移動・公共空間',
+      grammarFocus: '-는 날, -고, 에서',
     },
     {
       prompt: '画像を見て、韓国語で1〜2文の描写を書いてください。',
       scene: '夕方の市場で店員と客が会話している様子',
       answer: '저녁 시장에서 상인과 손님이 대화하고 있어요.',
       hint: '人物の関係(상인/손님)を入れると情報量が増えます。',
+      targetWords: '10-18',
+      vocabFocus: '職業・時間帯・会話動詞',
+      grammarFocus: '와/과, -고 있어요',
     },
   ],
   advanced: [
@@ -301,15 +367,49 @@ const fallbackImageBank = {
       scene: '会議室で資料を見ながら議論している複数のメンバー',
       answer: '회의실에서 여러 구성원이 자료를 검토하며 진지하게 토론하고 있다.',
       hint: '連結語尾(-며)を使うと描写が滑らかになります。',
+      targetWords: '14-26',
+      vocabFocus: '抽象名詞・会議語彙・態度副詞',
+      grammarFocus: '-며, 고급 서술어 선택',
     },
     {
       prompt: '画像を見て、韓国語で1〜2文の描写を書いてください。',
       scene: '夜の街で信号を待つ人と流れる車の光',
       answer: '밤거리에서 사람들이 신호를 기다리고 있고, 차 불빛이 길게 이어지고 있다.',
       hint: '並列構文(-고)で複数の要素を自然につなげます。',
+      targetWords: '14-26',
+      vocabFocus: '描写副詞・都市表現・連結表現',
+      grammarFocus: '-고 있고, 관찰형 서술',
     },
   ],
 };
+
+function getImageDifficultyProfile(level = 'beginner') {
+  if (level === 'advanced') {
+    return {
+      targetWords: '14-26',
+      sentenceGuide: '2文推奨。接続語尾を使い、描写対象を2つ以上含める。',
+      vocabFocus: '抽象語彙・副詞・関係語',
+      grammarFocus: '-며, -고 있고, 관찰형 종결',
+      feedbackStrictness: 'high',
+    };
+  }
+  if (level === 'intermediate') {
+    return {
+      targetWords: '10-18',
+      sentenceGuide: '1〜2文。時間・場所・人物の要素を2つ以上入れる。',
+      vocabFocus: '状況語彙・行動語彙',
+      grammarFocus: '-고 있어요, -면서, 에서/으로',
+      feedbackStrictness: 'medium',
+    };
+  }
+  return {
+    targetWords: '6-12',
+    sentenceGuide: '1文中心。主語・場所・動作を明確にする。',
+    vocabFocus: '基本名詞・基本動詞',
+    grammarFocus: '-고 있어요, 은/는, 이/가',
+    feedbackStrictness: 'gentle',
+  };
+}
 
 function getPracticeMode(value) {
   const normalized = String(value || 'translation').trim().toLowerCase();
@@ -345,9 +445,14 @@ function getFallbackImageQuestion(level = 'beginner') {
   const normalizedLevel = ['beginner', 'intermediate', 'advanced'].includes(level) ? level : 'beginner';
   const pool = fallbackImageBank[normalizedLevel];
   const base = pool[Math.floor(Math.random() * pool.length)];
+  const profile = getImageDifficultyProfile(normalizedLevel);
   return {
     ...base,
     imageUrl: buildSceneSvgDataUri(base.scene),
+    targetWords: base.targetWords || profile.targetWords,
+    sentenceGuide: profile.sentenceGuide,
+    vocabFocus: base.vocabFocus || profile.vocabFocus,
+    grammarFocus: base.grammarFocus || profile.grammarFocus,
   };
 }
 
@@ -468,22 +573,31 @@ function buildReplyGenerationPrompts(level, previousFollowUp = '') {
 }
 
 function buildImageGenerationPrompts(level) {
+  const profile = getImageDifficultyProfile(level);
   return {
     systemPrompt: [
       'You are an expert Korean writing teacher for Japanese learners.',
       'Create one image-description writing task.',
       'Rules:',
-      '- Return valid JSON only with the fields prompt, scene, answer, hint, and imagePrompt.',
+      '- Return valid JSON only with the fields prompt, scene, answer, hint, imagePrompt, targetWords, vocabFocus, and grammarFocus.',
       '- prompt must be in Japanese and instruct the learner to describe an image in Korean.',
       '- scene must be a short Japanese scene summary.',
       '- answer must be one natural Korean sample description (1-2 sentences).',
       '- hint must be in Japanese and brief.',
       '- imagePrompt must be a concise English prompt for generating an illustration of the scene.',
+      `- targetWords must match this word range: ${profile.targetWords}.`,
+      `- vocabFocus must align with this focus: ${profile.vocabFocus}.`,
+      `- grammarFocus must align with this focus: ${profile.grammarFocus}.`,
+      `- Sentence guide: ${profile.sentenceGuide}.`,
       '- Keep the scene realistic and easy to describe.',
       '- Do not add markdown, code fences, or extra text.',
     ].join(' '),
     userPrompt: [
       `Create one image-description task for a ${level} Korean learner.`,
+      `Word target: ${profile.targetWords}.`,
+      `Vocabulary focus: ${profile.vocabFocus}.`,
+      `Grammar focus: ${profile.grammarFocus}.`,
+      `Sentence guide: ${profile.sentenceGuide}.`,
       'Return JSON only.',
     ].join(' '),
   };
@@ -558,6 +672,7 @@ function buildReplyScoringPrompts({ prompt, situation, modelAnswer, userAnswer, 
 }
 
 function buildImageScoringPrompts({ prompt, situation, modelAnswer, userAnswer, level }) {
+  const profile = getImageDifficultyProfile(level);
   return {
     systemPrompt: [
       'You are a precise and encouraging Korean writing instructor for Japanese learners.',
@@ -570,6 +685,10 @@ function buildImageScoringPrompts({ prompt, situation, modelAnswer, userAnswer, 
       '- Return valid JSON only with fields: status, score, feedback, explanation, correctedText, alternatives.',
       '- feedback and explanation must be in Japanese.',
       '- correctedText and alternatives must be natural Korean.',
+      `- Level strictness is ${profile.feedbackStrictness}.`,
+      `- Expected word range: ${profile.targetWords}.`,
+      `- Vocabulary focus: ${profile.vocabFocus}.`,
+      `- Grammar focus: ${profile.grammarFocus}.`,
       '- Never include English words in feedback or explanation.',
       '- Do not add markdown, code fences, or extra text.',
     ].join(' '),
@@ -660,6 +779,10 @@ function sanitizeImageGenerationResult(rawResult, fallback) {
   const hint = String(rawResult?.hint || fallback.hint || '').trim();
   const imagePrompt = String(rawResult?.imagePrompt || rawResult?.image_prompt || '').trim();
   const imageUrl = String(rawResult?.imageUrl || fallback.imageUrl || '').trim();
+  const targetWords = String(rawResult?.targetWords || fallback.targetWords || '').trim();
+  const vocabFocus = String(rawResult?.vocabFocus || fallback.vocabFocus || '').trim();
+  const grammarFocus = String(rawResult?.grammarFocus || fallback.grammarFocus || '').trim();
+  const sentenceGuide = String(rawResult?.sentenceGuide || fallback.sentenceGuide || '').trim();
 
   return {
     mode: 'image',
@@ -669,6 +792,10 @@ function sanitizeImageGenerationResult(rawResult, fallback) {
     hint,
     imagePrompt,
     imageUrl,
+    targetWords,
+    vocabFocus,
+    grammarFocus,
+    sentenceGuide,
   };
 }
 
@@ -868,7 +995,22 @@ app.get('/api/auth/me', (req, res) => {
   if (!user) {
     return res.json(null);
   }
-  res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+  res.json({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    avatarUrl: user.avatarUrl || '',
+    authProvider: user.authProvider || 'password',
+  });
+});
+
+app.get('/api/auth/google/config', (_req, res) => {
+  const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+  res.json({
+    enabled: Boolean(clientId),
+    clientId,
+  });
 });
 
 app.post('/api/auth/register', (req, res) => {
@@ -896,11 +1038,13 @@ app.post('/api/auth/register', (req, res) => {
     password: hashPassword(password),
     role: 'user',
     progress: { attempted: 0, correct: 0, streak: 0, reviewQueue: [] },
+    authProvider: 'password',
+    avatarUrl: '',
   };
   users.push(user);
   saveUsers(users);
   setSession(res, user);
-  res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+  res.json({ id: user.id, name: user.name, email: user.email, role: user.role, avatarUrl: user.avatarUrl || '', authProvider: 'password' });
 });
 
 app.post('/api/auth/login', (req, res) => {
@@ -911,7 +1055,71 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(401).json({ error: 'メールアドレスまたはパスワードが違います' });
   }
   setSession(res, user);
-  res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+  res.json({ id: user.id, name: user.name, email: user.email, role: user.role, avatarUrl: user.avatarUrl || '', authProvider: user.authProvider || 'password' });
+});
+
+app.post('/api/auth/google', async (req, res) => {
+  const credential = String(req.body?.credential || '').trim();
+  if (!credential) {
+    return res.status(400).json({ error: 'Google認証情報がありません' });
+  }
+
+  const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+  if (!clientId) {
+    return res.status(503).json({ error: 'Googleログインは未設定です' });
+  }
+
+  const verification = await verifyGoogleIdToken(credential);
+  if (!verification.ok) {
+    return res.status(401).json({ error: verification.error || 'Googleログインに失敗しました' });
+  }
+
+  const { sub, email, name, picture } = verification.profile;
+  const users = normalizePasswordStorage(readJson(USERS_FILE, []));
+  const normalizedEmail = String(email).trim().toLowerCase();
+
+  let user = users.find((candidate) => String(candidate.googleSub || '') === sub)
+    || users.find((candidate) => String(candidate.email || '').toLowerCase() === normalizedEmail)
+    || null;
+
+  if (user && user.role === 'admin' && String(user.googleSub || '') !== sub) {
+    return res.status(403).json({ error: '管理者アカウントへのGoogle連携は許可されていません' });
+  }
+
+  if (!user) {
+    user = {
+      id: buildUniqueUserId(users, name || normalizedEmail.split('@')[0], `user-${Date.now()}`),
+      name,
+      email: normalizedEmail,
+      password: hashPassword(crypto.randomBytes(16).toString('hex')),
+      role: 'user',
+      progress: { attempted: 0, correct: 0, streak: 0, reviewQueue: [] },
+      authProvider: 'google',
+      googleSub: sub,
+      avatarUrl: picture || '',
+    };
+    users.push(user);
+  } else {
+    user.name = name || user.name;
+    user.email = normalizedEmail;
+    user.googleSub = sub;
+    user.avatarUrl = picture || user.avatarUrl || '';
+    user.authProvider = 'google';
+    if (!user.progress) {
+      user.progress = { attempted: 0, correct: 0, streak: 0, reviewQueue: [] };
+    }
+  }
+
+  saveUsers(users);
+  setSession(res, user);
+  return res.json({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    avatarUrl: user.avatarUrl || '',
+    authProvider: 'google',
+  });
 });
 
 app.post('/api/auth/logout', (_req, res) => {

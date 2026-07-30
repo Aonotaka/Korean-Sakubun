@@ -41,6 +41,14 @@ const reviewBtn = document.getElementById('reviewBtn');
 const reviewList = document.getElementById('reviewList');
 const registerForm = document.getElementById('registerForm');
 const authStatus = document.getElementById('authStatus');
+const topLoginLink = document.getElementById('topLoginLink');
+const topLogoutBtn = document.getElementById('topLogoutBtn');
+const topProfile = document.getElementById('topProfile');
+const topProfileAvatar = document.getElementById('topProfileAvatar');
+const topProfileName = document.getElementById('topProfileName');
+const topProfileState = document.getElementById('topProfileState');
+const googleSignInButton = document.getElementById('googleSignInButton');
+const googleAuthStatus = document.getElementById('googleAuthStatus');
 const modelAnswerBox = document.getElementById('modelAnswerBox');
 const shareBtn = document.getElementById('shareBtn');
 const registerNameInput = document.getElementById('registerName');
@@ -64,6 +72,7 @@ let cloudTtsAvailable = false;
 let ttsMode = 'browser';
 let currentCloudAudio = null;
 let externalTtsProvider = 'auto';
+let currentSessionUser = null;
 const ttsModeStorageKey = 'korean-sakubun-tts-mode';
 
 function buildBankFromSeed(seed, count) {
@@ -151,6 +160,142 @@ function updateAiStatus(message, ready = false) {
   sessionStatus.textContent = message;
   statusPill.textContent = ready ? 'AI接続: 利用可能' : 'AI接続: フォールバック';
   statusPill.className = `status-pill${ready ? ' is-ready' : ' is-offline'}`;
+}
+
+function buildDefaultAvatarDataUrl(name = 'User') {
+  const initial = String(name || 'U').trim().slice(0, 1).toUpperCase() || 'U';
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">',
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fda4af"/><stop offset="100%" stop-color="#93c5fd"/></linearGradient></defs>',
+    '<circle cx="32" cy="32" r="32" fill="url(#g)"/>',
+    `<text x="32" y="40" text-anchor="middle" font-size="30" font-family="Noto Sans JP, sans-serif" fill="#0f172a">${initial}</text>`,
+    '</svg>',
+  ].join('');
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function renderAuthProfile(user) {
+  const loggedIn = Boolean(user && user.id);
+  if (topLoginLink) topLoginLink.hidden = loggedIn;
+  if (topLogoutBtn) topLogoutBtn.hidden = !loggedIn;
+  if (topProfile) topProfile.hidden = false;
+
+  if (topProfileName) {
+    topProfileName.textContent = loggedIn ? (user.name || user.email || 'ユーザー') : 'ゲスト';
+  }
+  if (topProfileState) {
+    topProfileState.textContent = loggedIn ? 'ログイン中' : '未ログイン';
+    topProfileState.classList.toggle('is-offline', !loggedIn);
+  }
+  if (topProfileAvatar) {
+    topProfileAvatar.src = loggedIn && user.avatarUrl ? user.avatarUrl : buildDefaultAvatarDataUrl(loggedIn ? user.name : 'G');
+  }
+}
+
+async function fetchCurrentSessionUser() {
+  try {
+    const response = await fetch('/api/auth/me');
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    return null;
+  }
+}
+
+async function refreshAuthState() {
+  const user = await fetchCurrentSessionUser();
+  currentSessionUser = user || null;
+  renderAuthProfile(currentSessionUser);
+
+  if (authStatus) {
+    authStatus.textContent = currentSessionUser
+      ? `${currentSessionUser.name || 'ユーザー'}としてログイン中です。`
+      : '未ログインです。登録またはGoogleログインで進捗を保存できます。';
+  }
+}
+
+async function applyServerProgressIfAvailable() {
+  if (!currentSessionUser) return;
+  try {
+    const response = await fetch('/api/progress');
+    if (!response.ok) return;
+    const remote = await response.json();
+    if (!remote || typeof remote !== 'object') return;
+    progressState = { ...progressState, ...remote };
+    normalizeProgressState();
+    updateProgressUI();
+    saveProgress();
+  } catch (error) {
+    console.warn('Could not load progress from server', error);
+  }
+}
+
+async function handleGoogleCredentialResponse(response) {
+  const credential = String(response?.credential || '').trim();
+  if (!credential) {
+    if (googleAuthStatus) googleAuthStatus.textContent = 'Googleログインに失敗しました。';
+    return;
+  }
+
+  if (googleAuthStatus) googleAuthStatus.textContent = 'Googleログイン中...';
+  try {
+    const authResponse = await fetch('/api/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential }),
+    });
+    const data = await authResponse.json().catch(() => ({}));
+    if (!authResponse.ok) {
+      if (googleAuthStatus) googleAuthStatus.textContent = data.error || 'Googleログインできませんでした。';
+      return;
+    }
+
+    if (googleAuthStatus) googleAuthStatus.textContent = `${data.name || 'ユーザー'}さんでログインしました。`;
+    await refreshAuthState();
+    await applyServerProgressIfAvailable();
+  } catch (error) {
+    if (googleAuthStatus) googleAuthStatus.textContent = 'Googleログイン中にエラーが発生しました。';
+  }
+}
+
+async function initGoogleSignIn() {
+  if (!googleSignInButton) return;
+  try {
+    const response = await fetch('/api/auth/google/config');
+    const config = response.ok ? await response.json() : { enabled: false };
+    if (!config.enabled || !config.clientId) {
+      if (googleAuthStatus) googleAuthStatus.textContent = 'Googleログインは現在未設定です。';
+      return;
+    }
+
+    if (!window.google?.accounts?.id) {
+      if (googleAuthStatus) googleAuthStatus.textContent = 'Googleログインの初期化に失敗しました。';
+      return;
+    }
+
+    window.google.accounts.id.initialize({
+      client_id: config.clientId,
+      callback: handleGoogleCredentialResponse,
+      auto_select: false,
+    });
+
+    googleSignInButton.innerHTML = '';
+    window.google.accounts.id.renderButton(googleSignInButton, {
+      type: 'standard',
+      theme: 'outline',
+      size: 'large',
+      text: 'signin_with',
+      shape: 'pill',
+      locale: 'ja',
+      width: 280,
+    });
+
+    if (googleAuthStatus) {
+      googleAuthStatus.textContent = 'Googleアカウントでログインできます。';
+    }
+  } catch (error) {
+    if (googleAuthStatus) googleAuthStatus.textContent = 'Googleログイン設定の読み込みに失敗しました。';
+  }
 }
 
 function getPracticeModeLabel(mode) {
@@ -676,6 +821,9 @@ function updateProgressUI() {
 }
 
 async function syncProgressToServer() {
+  if (!currentSessionUser) {
+    return;
+  }
   try {
     await fetch('/api/progress', {
       method: 'POST',
@@ -852,6 +1000,10 @@ async function generateQuestion(previousFollowUp = '') {
           hint: data.hint,
           imageUrl: data.imageUrl,
           scene: data.scene || '',
+          targetWords: data.targetWords || '',
+          vocabFocus: data.vocabFocus || '',
+          grammarFocus: data.grammarFocus || '',
+          sentenceGuide: data.sentenceGuide || '',
           mode: 'image',
           source: 'ai',
         };
@@ -878,24 +1030,56 @@ async function generateQuestion(previousFollowUp = '') {
   }
 
   if (currentPracticeMode === 'image') {
-    const imageFallbacks = [
-      {
-        prompt: '画像を見て、韓国語で1〜2文の描写を書いてください。',
-        scene: '公園で人と犬が散歩している午後の風景',
-        answer: '공원에서 사람들이 강아지와 함께 산책하고 있어요.',
-        hint: '場所(공원에서)と動作(-고 있어요)を入れると自然です。',
-      },
-      {
-        prompt: '画像を見て、韓国語で1〜2文の描写を書いてください。',
-        scene: 'カフェでノートPCを見ながら話している二人',
-        answer: '카페에서 두 사람이 노트북을 보면서 이야기하고 있어요.',
-        hint: '同時動作は -면서 を使うと描写しやすいです。',
-      },
-    ];
+    const imageFallbackByLevel = {
+      beginner: [
+        {
+          prompt: '画像を見て、韓国語で1文中心の描写を書いてください。',
+          scene: '公園で人と犬が散歩している午後の風景',
+          answer: '공원에서 사람들이 강아지와 함께 산책하고 있어요.',
+          hint: '場所(공원에서)と動作(-고 있어요)を入れると自然です。',
+          targetWords: '6-12語',
+          vocabFocus: '基本名詞・基本動詞',
+          grammarFocus: '-고 있어요, 은/는, 이/가',
+        },
+        {
+          prompt: '画像を見て、韓国語で1文中心の描写を書いてください。',
+          scene: 'カフェで二人がノートPCを見ながら話している場面',
+          answer: '카페에서 두 사람이 노트북을 보면서 이야기하고 있어요.',
+          hint: '同時動作は -면서 を使うと描写しやすいです。',
+          targetWords: '7-13語',
+          vocabFocus: '場所・人数・基本動詞',
+          grammarFocus: '-면서, -고 있어요',
+        },
+      ],
+      intermediate: [
+        {
+          prompt: '画像を見て、韓国語で1〜2文の描写を書いてください。',
+          scene: '雨の中で傘を差しながらバス停で待っている人たち',
+          answer: '비가 오는 날에 사람들이 우산을 쓰고 버스 정류장에서 기다리고 있어요.',
+          hint: '背景と場所を組み合わせると自然です。',
+          targetWords: '10-18語',
+          vocabFocus: '天気・移動・公共空間',
+          grammarFocus: '-는 날, -고, 에서',
+        },
+      ],
+      advanced: [
+        {
+          prompt: '画像を見て、韓国語で2文の描写を書いてください。',
+          scene: '会議室で資料を見ながら議論している複数のメンバー',
+          answer: '회의실에서 여러 구성원이 자료를 검토하며 진지하게 토론하고 있다.',
+          hint: '連結語尾(-며)を使うと描写が滑らかになります。',
+          targetWords: '14-26語',
+          vocabFocus: '抽象名詞・会議語彙・態度副詞',
+          grammarFocus: '-며, 관찰형 서술',
+        },
+      ],
+    };
+    const imageFallbacks = imageFallbackByLevel[currentLevel] || imageFallbackByLevel.beginner;
     const pick = imageFallbacks[Math.floor(Math.random() * imageFallbacks.length)];
     return {
       ...pick,
       imageUrl: buildLocalImageDataUrl(pick.scene),
+      sentenceGuide: currentLevel === 'advanced' ? '2文推奨。対象を2つ以上書く。' : currentLevel === 'intermediate' ? '1〜2文で状況要素を2つ以上入れる。' : '1文中心で場所と動作を書く。',
       mode: 'image',
       source: 'fallback',
     };
@@ -936,7 +1120,13 @@ function showQuestion() {
     imagePromptBox.hidden = !isImageMode;
     if (isImageMode) {
       imagePromptImage.src = question.imageUrl || buildLocalImageDataUrl(question.scene || '街の風景');
-      imagePromptCaption.textContent = question.scene ? `画像の場面: ${question.scene}` : '画像の場面を韓国語で描写してください。';
+      const lines = [];
+      if (question.scene) lines.push(`画像の場面: ${question.scene}`);
+      if (question.targetWords) lines.push(`目安語数: ${question.targetWords}`);
+      if (question.vocabFocus) lines.push(`語彙フォーカス: ${question.vocabFocus}`);
+      if (question.grammarFocus) lines.push(`文法フォーカス: ${question.grammarFocus}`);
+      if (question.sentenceGuide) lines.push(`文の目安: ${question.sentenceGuide}`);
+      imagePromptCaption.textContent = lines.length ? lines.join(' / ') : '画像の場面を韓国語で描写してください。';
     }
   }
 
@@ -1324,6 +1514,8 @@ registerForm.addEventListener('submit', async (event) => {
   if (response.ok) {
     authStatus.textContent = 'アカウントを作成しました。学習進捗を保存できます。';
     registerForm.reset();
+    await refreshAuthState();
+    await applyServerProgressIfAvailable();
     await syncProgressToServer();
   } else {
     const data = await response.json();
@@ -1352,6 +1544,20 @@ if (restartSessionBtn) {
   restartSessionBtn.addEventListener('click', startSession);
 }
 
+if (topLogoutBtn) {
+  topLogoutBtn.addEventListener('click', async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    currentSessionUser = null;
+    renderAuthProfile(null);
+    if (googleAuthStatus) {
+      googleAuthStatus.textContent = 'ログアウトしました。';
+    }
+    if (authStatus) {
+      authStatus.textContent = '未ログインです。登録またはGoogleログインで進捗を保存できます。';
+    }
+  });
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   refreshKoreanVoices();
   if ('speechSynthesis' in window) {
@@ -1373,6 +1579,8 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   loadProgress();
+  refreshAuthState().then(applyServerProgressIfAvailable);
+  initGoogleSignIn();
   loadFeedbackComments();
   updateAiStatus('AI接続状態を確認しています...', false);
   applyPracticeQueryParams();
