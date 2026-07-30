@@ -477,23 +477,21 @@ function buildSceneSvgDataUri(sceneText = '公園で人と犬が散歩してい�
   const skyColor = isNight ? '#1e293b' : isRain ? '#dbeafe' : isCafe ? '#fff3e0' : '#dbeafe';
   const groundColor = isPark ? '#86efac' : isMarket ? '#fed7aa' : isMeeting ? '#e5e7eb' : '#c7f9cc';
   const sunColor = isNight ? '#f8fafc' : '#facc15';
-  const accentColor = isCafe ? '#8b5cf6' : isMeeting ? '#ef4444' : '#0f766e';
-  const mainLabel = isPark ? 'Park Scene' : isCafe ? 'Cafe Scene' : isRain ? 'Rainy Scene' : isMeeting ? 'Meeting Scene' : isMarket ? 'Market Scene' : 'AI Scene';
+  const treeColor = isPark ? '#16a34a' : isMarket ? '#22c55e' : isMeeting ? '#64748b' : '#2f855a';
   const svg = [
     '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="768" viewBox="0 0 1024 768">',
     `<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${skyColor}"/><stop offset="100%" stop-color="#f8fafc"/></linearGradient></defs>`,
     '<rect width="1024" height="768" fill="url(#bg)"/>',
     `<circle cx="170" cy="150" r="92" fill="${sunColor}" fill-opacity="0.34"/>`,
+    '<ellipse cx="260" cy="190" rx="80" ry="42" fill="#ffffff" fill-opacity="0.62"/>',
+    '<ellipse cx="330" cy="135" rx="110" ry="54" fill="#ffffff" fill-opacity="0.54"/>',
+    '<ellipse cx="760" cy="150" rx="84" ry="40" fill="#ffffff" fill-opacity="0.58"/>',
     `<rect x="0" y="500" width="1024" height="268" fill="${groundColor}" fill-opacity="0.72"/>`,
-    isPark ? '<circle cx="230" cy="455" r="26" fill="#16a34a"/><rect x="222" y="480" width="16" height="90" rx="8" fill="#7c4a1d"/><circle cx="230" cy="420" r="44" fill="#22c55e" fill-opacity="0.8"/>' : '',
-    isCafe ? '<rect x="120" y="360" width="220" height="160" rx="18" fill="#fff7ed" stroke="#fdba74"/><rect x="180" y="400" width="100" height="60" rx="12" fill="#dbeafe"/><circle cx="200" cy="430" r="16" fill="#93c5fd"/><circle cx="260" cy="430" r="16" fill="#93c5fd"/>' : '',
-    isRain ? '<g opacity="0.7"><path d="M250 280l-14 28" stroke="#3b82f6" stroke-width="4"/><path d="M310 250l-14 28" stroke="#3b82f6" stroke-width="4"/><path d="M370 290l-14 28" stroke="#3b82f6" stroke-width="4"/><path d="M430 260l-14 28" stroke="#3b82f6" stroke-width="4"/></g><path d="M170 460c90-120 170-120 260 0" fill="#94a3b8" opacity="0.55"/>' : '',
-    isMeeting ? '<rect x="160" y="300" width="700" height="260" rx="26" fill="#ffffff" stroke="#cbd5e1"/><rect x="210" y="400" width="600" height="34" rx="17" fill="#e2e8f0"/><rect x="260" y="340" width="500" height="30" rx="15" fill="#cbd5e1"/>' : '',
-    isMarket ? '<rect x="120" y="360" width="760" height="130" rx="20" fill="#fff7ed" stroke="#fdba74"/><rect x="120" y="330" width="760" height="50" rx="18" fill="#fb7185" opacity="0.8"/>' : '',
-    '<rect x="96" y="420" width="832" height="200" rx="32" fill="#ffffff" fill-opacity="0.84"/>',
-    `<text x="512" y="346" text-anchor="middle" fill="#0f172a" font-size="40" font-family="Noto Sans JP, sans-serif">${mainLabel}</text>`,
-    `<text x="512" y="490" text-anchor="middle" fill="#334155" font-size="28" font-family="Noto Sans JP, sans-serif">${scene}</text>`,
-    `<text x="512" y="540" text-anchor="middle" fill="${accentColor}" font-size="20" font-family="Noto Sans JP, sans-serif">No text, no logo, no watermark</text>`,
+    isPark ? '<g><path d="M122 562c20-58 54-94 98-96 42-2 84 26 116 90" fill="none" stroke="#2f855a" stroke-width="12" stroke-linecap="round"/><circle cx="226" cy="436" r="28" fill="#22c55e"/><rect x="218" y="460" width="16" height="100" rx="8" fill="#8b5a2b"/><circle cx="226" cy="402" r="52" fill="#16a34a" fill-opacity="0.8"/></g>' : '',
+    isCafe ? '<g><rect x="118" y="350" width="250" height="178" rx="22" fill="#fff7ed" stroke="#fdba74"/><rect x="174" y="394" width="108" height="58" rx="12" fill="#dbeafe"/><circle cx="196" cy="424" r="16" fill="#93c5fd"/><circle cx="260" cy="424" r="16" fill="#93c5fd"/><rect x="388" y="404" width="112" height="42" rx="21" fill="#fde68a"/><rect x="340" y="370" width="14" height="120" rx="7" fill="#a16207"/></g>' : '',
+    isRain ? '<g opacity="0.72"><path d="M210 282l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M270 254l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M334 292l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M400 258l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M462 286l-16 30" stroke="#3b82f6" stroke-width="4"/></g><path d="M170 462c96-122 192-122 296 0" fill="#94a3b8" opacity="0.34"/>' : '',
+    isMeeting ? '<g><rect x="150" y="300" width="724" height="252" rx="28" fill="#ffffff" stroke="#cbd5e1"/><rect x="202" y="356" width="620" height="26" rx="13" fill="#e2e8f0"/><rect x="202" y="398" width="520" height="26" rx="13" fill="#cbd5e1"/><circle cx="242" cy="480" r="26" fill="#93c5fd"/><circle cx="300" cy="478" r="22" fill="#fda4af"/><circle cx="726" cy="480" r="24" fill="#fde68a"/></g>' : '',
+    isMarket ? '<g><rect x="110" y="364" width="804" height="124" rx="20" fill="#fff7ed" stroke="#fdba74"/><rect x="110" y="334" width="804" height="52" rx="18" fill="#fb7185" opacity="0.8"/><rect x="176" y="406" width="90" height="82" rx="10" fill="#fde68a"/><rect x="288" y="398" width="92" height="90" rx="10" fill="#bfdbfe"/><rect x="400" y="410" width="80" height="78" rx="10" fill="#fecaca"/><rect x="514" y="404" width="86" height="84" rx="10" fill="#bbf7d0"/></g>' : '',
     '</svg>',
   ].join('');
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
@@ -602,9 +600,11 @@ function buildImageGenerationPrompts(level) {
       '- scene must be a short Japanese scene summary.',
       '- answer must be one natural Korean sample description (1-2 sentences).',
       '- hint must be in Japanese and brief.',
-      '- imagePrompt must be a detailed English prompt for generating a realistic image of the scene.',
-      '- imagePrompt must include: location, subjects, action, time/light, camera framing, and mood.',
-      '- imagePrompt must explicitly say: no text, no letters, no watermark, no logo.',
+      '- imagePrompt must be a detailed English prompt for generating a soft hand-drawn storybook illustration of the scene, not a photo.',
+      '- imagePrompt must include: location, subjects, action, time/light, camera framing, mood, and visual style.',
+      '- imagePrompt should favor watercolor, colored-pencil, or picture-book illustration styling with bright but gentle colors.',
+      '- imagePrompt should describe clearly visible children or people, natural outdoor detail, and a friendly, lively composition when the scene allows it.',
+      '- imagePrompt must explicitly say: no text, no letters, no watermark, no logo, no UI, no captions.',
       `- targetWords must match this word range: ${profile.targetWords}.`,
       `- vocabFocus must align with this focus: ${profile.vocabFocus}.`,
       `- grammarFocus must align with this focus: ${profile.grammarFocus}.`,
@@ -618,6 +618,7 @@ function buildImageGenerationPrompts(level) {
       `Vocabulary focus: ${profile.vocabFocus}.`,
       `Grammar focus: ${profile.grammarFocus}.`,
       `Sentence guide: ${profile.sentenceGuide}.`,
+      'The image should look like a warm children’s picture-book illustration with a park, schoolyard, cafe, market, rainy street, or meeting scene depending on the task.',
       'Return JSON only.',
     ].join(' '),
   };

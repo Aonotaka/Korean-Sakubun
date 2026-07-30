@@ -321,23 +321,34 @@ function getSessionQuestionCount(requestedCount, mode) {
 }
 
 function buildLocalImageDataUrl(sceneText = '公園で人と犬が散歩しています。') {
-  const escaped = String(sceneText)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .slice(0, 56);
+  const raw = String(sceneText || '').toLowerCase();
+  const isPark = /공원|公園|park/.test(raw);
+  const isCafe = /카페|喫茶|cafe/.test(raw);
+  const isRain = /비|雨|rain/.test(raw);
+  const isMeeting = /회의|会議|meeting/.test(raw);
+  const isMarket = /시장|市場|market/.test(raw);
+  const skyColor = isRain ? '#dbeafe' : isCafe ? '#fff4e6' : '#dbeafe';
+  const groundColor = isPark ? '#bbf7d0' : isMarket ? '#fde68a' : isMeeting ? '#e5e7eb' : '#d1fae5';
   const svg = [
     '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="768" viewBox="0 0 1024 768">',
-    '<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ffe9d9"/><stop offset="100%" stop-color="#dbeafe"/></linearGradient></defs>',
+    `<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${skyColor}"/><stop offset="100%" stop-color="#f8fafc"/></linearGradient></defs>`,
     '<rect width="1024" height="768" fill="url(#bg)"/>',
-    '<circle cx="200" cy="180" r="86" fill="#facc15" fill-opacity="0.35"/>',
-    '<rect x="120" y="430" width="780" height="210" rx="26" fill="#ffffff" fill-opacity="0.86"/>',
-    '<rect x="80" y="520" width="860" height="160" rx="32" fill="#84cc16" fill-opacity="0.36"/>',
-    '<text x="512" y="360" text-anchor="middle" fill="#0f172a" font-size="42" font-family="Noto Sans JP, sans-serif">AI Scene</text>',
-    `<text x="512" y="485" text-anchor="middle" fill="#334155" font-size="30" font-family="Noto Sans JP, sans-serif">${escaped}</text>`,
+    '<circle cx="180" cy="150" r="82" fill="#facc15" fill-opacity="0.28"/>',
+    '<ellipse cx="264" cy="172" rx="78" ry="40" fill="#ffffff" fill-opacity="0.5"/>',
+    '<ellipse cx="770" cy="148" rx="88" ry="42" fill="#ffffff" fill-opacity="0.46"/>',
+    `<rect x="0" y="498" width="1024" height="270" fill="${groundColor}" fill-opacity="0.82"/>`,
+    isPark ? '<circle cx="236" cy="430" r="50" fill="#22c55e" fill-opacity="0.82"/><rect x="228" y="468" width="16" height="96" rx="8" fill="#8b5a2b"/>' : '',
+    isCafe ? '<rect x="126" y="352" width="244" height="170" rx="22" fill="#fff7ed" stroke="#fdba74"/><rect x="182" y="394" width="110" height="60" rx="12" fill="#dbeafe"/><circle cx="206" cy="424" r="16" fill="#93c5fd"/><circle cx="268" cy="424" r="16" fill="#93c5fd"/>' : '',
+    isRain ? '<g opacity="0.72"><path d="M232 280l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M296 252l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M362 286l-16 30" stroke="#3b82f6" stroke-width="4"/></g><path d="M170 460c98-120 196-120 294 0" fill="#94a3b8" opacity="0.32"/>' : '',
+    isMeeting ? '<rect x="152" y="304" width="720" height="246" rx="28" fill="#ffffff" stroke="#cbd5e1"/><rect x="206" y="356" width="612" height="26" rx="13" fill="#e2e8f0"/><rect x="206" y="398" width="498" height="26" rx="13" fill="#cbd5e1"/>' : '',
+    isMarket ? '<rect x="112" y="362" width="800" height="124" rx="20" fill="#fff7ed" stroke="#fdba74"/><rect x="112" y="332" width="800" height="52" rx="18" fill="#fb7185" opacity="0.8"/>' : '',
     '</svg>',
   ].join('');
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function isSvgDataUrl(value) {
+  return String(value || '').trim().toLowerCase().startsWith('data:image/svg+xml');
 }
 
 function clearChatTranscript() {
@@ -973,47 +984,57 @@ function hasMismatchByKeyword(prompt, answer) {
 }
 
 async function generateQuestion(previousFollowUp = '') {
-  try {
-    const response = await fetch('/api/generate-question', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ level: currentLevel, style: 'short', mode: currentPracticeMode, previousFollowUp }),
-    });
-    const data = await response.json();
-    if (currentPracticeMode === 'reply') {
-      if (data && data.situation && data.answer) {
-        return {
-          prompt: data.prompt || '友達からのメッセージ',
-          situation: data.situation,
-          answer: data.answer,
-          hint: data.hint,
-          followUp: data.followUp || '',
-          mode: 'reply',
-          source: 'ai',
-        };
+  const maxImageRetries = currentPracticeMode === 'image' ? 2 : 0;
+  for (let attempt = 0; attempt <= maxImageRetries; attempt += 1) {
+    try {
+      const response = await fetch('/api/generate-question', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ level: currentLevel, style: 'short', mode: currentPracticeMode, previousFollowUp }),
+      });
+      const data = await response.json();
+      if (currentPracticeMode === 'reply') {
+        if (data && data.situation && data.answer) {
+          return {
+            prompt: data.prompt || '友達からのメッセージ',
+            situation: data.situation,
+            answer: data.answer,
+            hint: data.hint,
+            followUp: data.followUp || '',
+            mode: 'reply',
+            source: 'ai',
+          };
+        }
+      } else if (currentPracticeMode === 'image') {
+        if (data && data.prompt && data.answer && data.imageUrl && !isSvgDataUrl(data.imageUrl)) {
+          return {
+            prompt: data.prompt,
+            answer: data.answer,
+            hint: data.hint,
+            imageUrl: data.imageUrl,
+            scene: data.scene || '',
+            targetWords: data.targetWords || '',
+            vocabFocus: data.vocabFocus || '',
+            grammarFocus: data.grammarFocus || '',
+            sentenceGuide: data.sentenceGuide || '',
+            mode: 'image',
+            source: 'ai',
+          };
+        }
+
+        if (attempt < maxImageRetries) {
+          console.warn('Image generation returned a fallback image. Retrying with a new task.');
+          continue;
+        }
+      } else if (data && data.prompt && data.answer && !hasMismatchByKeyword(data.prompt, data.answer)) {
+        return { prompt: data.prompt, answer: data.answer, hint: data.hint, mode: 'translation', source: 'ai' };
       }
-    } else if (currentPracticeMode === 'image') {
-      if (data && data.prompt && data.answer && data.imageUrl) {
-        return {
-          prompt: data.prompt,
-          answer: data.answer,
-          hint: data.hint,
-          imageUrl: data.imageUrl,
-          scene: data.scene || '',
-          targetWords: data.targetWords || '',
-          vocabFocus: data.vocabFocus || '',
-          grammarFocus: data.grammarFocus || '',
-          sentenceGuide: data.sentenceGuide || '',
-          mode: 'image',
-          source: 'ai',
-        };
-      }
-    } else if (data && data.prompt && data.answer && !hasMismatchByKeyword(data.prompt, data.answer)) {
-      return { prompt: data.prompt, answer: data.answer, hint: data.hint, mode: 'translation', source: 'ai' };
+      console.warn('AI generated low-quality question pair. Falling back to built-in bank.');
+      break;
+    } catch (error) {
+      console.warn('AI generation failed', error);
+      break;
     }
-    console.warn('AI generated low-quality question pair. Falling back to built-in bank.');
-  } catch (error) {
-    console.warn('AI generation failed', error);
   }
 
   if (currentPracticeMode === 'reply') {
