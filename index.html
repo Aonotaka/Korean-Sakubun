@@ -53,6 +53,7 @@
         <div class="topbar__links">
           <a href="#features">特徴</a>
           <a href="#practice">練習する</a>
+          <a href="/?mode=reply&level=beginner&autostart=1#practice">返信モード</a>
           <a href="#progress">進捗</a>
           <a href="/what-is-korean-composition">韓国語作文とは</a>
           <a href="/learning-tips">学習のコツ</a>
@@ -79,6 +80,7 @@
           <p class="hero__one-liner">翻訳練習と会話返信練習を往復しながら、自然な韓国語の反応速度を育てます。</p>
           <div class="hero__actions">
             <a href="#practice" class="btn btn--primary">トレーニングを始める</a>
+            <a href="/?mode=reply&level=beginner&autostart=1#practice" class="btn btn--secondary">会話返信を始める</a>
             <a href="/login" class="btn btn--secondary">ログイン</a>
             <button id="shareBtn" class="btn btn--secondary" type="button">Xでシェア</button>
           </div>
@@ -196,6 +198,9 @@
               <li>模範解答と構文アドバイスを確認</li>
               <li>苦手タグと復習リストに連動</li>
             </ul>
+            <div class="mode-card__actions">
+              <a href="/?mode=translation&level=beginner#practice" class="btn btn--secondary">このモードを見る</a>
+            </div>
           </article>
           <article class="mode-card mode-card--reply">
             <span class="mode-card__eyebrow">Mode 02</span>
@@ -206,6 +211,22 @@
               <li>常に採点・添削しながら会話継続</li>
               <li>返信モードは長めセッションで定着</li>
             </ul>
+            <div class="mode-card__actions">
+              <a href="/?mode=reply&level=beginner&autostart=1#practice" class="btn btn--primary">このモードを始める</a>
+            </div>
+          </article>
+          <article class="mode-card mode-card--image is-coming-soon">
+            <span class="mode-card__eyebrow">Mode 03</span>
+            <h3>画像を見て作文</h3>
+            <p>写真やイラストを見て、その場面を韓国語で説明するモードです。入口がないのではなく、まだ未実装です。</p>
+            <ul class="mode-card__list">
+              <li>場面描写の語彙を鍛える想定</li>
+              <li>会話ではなく説明文の作文向け</li>
+              <li>今後の追加候補として準備中</li>
+            </ul>
+            <div class="mode-card__actions">
+              <span class="coming-soon-badge">準備中</span>
+            </div>
           </article>
         </div>
       </section>
@@ -237,6 +258,8 @@
       <section id="practice" class="section practice-section">
         <div class="panel panel--control">
           <h2>練習設定</h2>
+          <p class="panel__hint">会話練習をすぐ始める場合は、返信モード直行ボタンを使ってください。</p>
+          <a href="/?mode=reply&level=beginner&autostart=1#practice" class="btn btn--secondary">返信モードを直ちに開始</a>
           <label>
             レベル
             <select id="levelSelect">
