@@ -266,8 +266,56 @@ const fallbackReplyBank = {
   ],
 };
 
+const fallbackImageBank = {
+  beginner: [
+    {
+      prompt: '画像を見て、韓国語で1〜2文の描写を書いてください。',
+      scene: '公園で人と犬が散歩している午後の風景',
+      answer: '공원에서 사람들이 강아지와 함께 산책하고 있어요.',
+      hint: '場所(공원에서)と動作(-고 있어요)を入れると自然です。',
+    },
+    {
+      prompt: '画像を見て、韓国語で1〜2文の描写を書いてください。',
+      scene: 'カフェで二人がノートPCを見ながら話している場面',
+      answer: '카페에서 두 사람이 노트북을 보면서 이야기하고 있어요.',
+      hint: '同時動作は -면서 を使うと描写しやすいです。',
+    },
+  ],
+  intermediate: [
+    {
+      prompt: '画像を見て、韓国語で1〜2文の描写を書いてください。',
+      scene: '雨の中で傘を差しながらバス停で待っている人たち',
+      answer: '비가 오는 날에 사람들이 우산을 쓰고 버스 정류장에서 기다리고 있어요.',
+      hint: '背景(비가 오는 날)と場所(버스 정류장에서)を組み合わせると自然です。',
+    },
+    {
+      prompt: '画像を見て、韓国語で1〜2文の描写を書いてください。',
+      scene: '夕方の市場で店員と客が会話している様子',
+      answer: '저녁 시장에서 상인과 손님이 대화하고 있어요.',
+      hint: '人物の関係(상인/손님)を入れると情報量が増えます。',
+    },
+  ],
+  advanced: [
+    {
+      prompt: '画像を見て、韓国語で1〜2文の描写を書いてください。',
+      scene: '会議室で資料を見ながら議論している複数のメンバー',
+      answer: '회의실에서 여러 구성원이 자료를 검토하며 진지하게 토론하고 있다.',
+      hint: '連結語尾(-며)を使うと描写が滑らかになります。',
+    },
+    {
+      prompt: '画像を見て、韓国語で1〜2文の描写を書いてください。',
+      scene: '夜の街で信号を待つ人と流れる車の光',
+      answer: '밤거리에서 사람들이 신호를 기다리고 있고, 차 불빛이 길게 이어지고 있다.',
+      hint: '並列構文(-고)で複数の要素を自然につなげます。',
+    },
+  ],
+};
+
 function getPracticeMode(value) {
-  return String(value || 'translation') === 'reply' ? 'reply' : 'translation';
+  const normalized = String(value || 'translation').trim().toLowerCase();
+  if (normalized === 'reply') return 'reply';
+  if (normalized === 'image') return 'image';
+  return 'translation';
 }
 
 function getFallbackQuestion(level = 'beginner') {
@@ -291,6 +339,41 @@ function getFallbackReplyPrompt(level = 'beginner', previousFollowUp = '') {
     answer: base.answer,
     followUp: base.followUp || '친구: 응, 다음 이야기 이어서 하자.',
   };
+}
+
+function getFallbackImageQuestion(level = 'beginner') {
+  const normalizedLevel = ['beginner', 'intermediate', 'advanced'].includes(level) ? level : 'beginner';
+  const pool = fallbackImageBank[normalizedLevel];
+  const base = pool[Math.floor(Math.random() * pool.length)];
+  return {
+    ...base,
+    imageUrl: buildSceneSvgDataUri(base.scene),
+  };
+}
+
+function escapeSvgText(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildSceneSvgDataUri(sceneText = '公園で人と犬が散歩している風景') {
+  const scene = escapeSvgText(sceneText).slice(0, 64);
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="768" viewBox="0 0 1024 768">',
+    '<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ffe8d8"/><stop offset="100%" stop-color="#dbeafe"/></linearGradient></defs>',
+    '<rect width="1024" height="768" fill="url(#bg)"/>',
+    '<circle cx="210" cy="170" r="86" fill="#facc15" fill-opacity="0.36"/>',
+    '<rect x="100" y="430" width="820" height="228" rx="30" fill="#ffffff" fill-opacity="0.88"/>',
+    '<rect x="70" y="526" width="884" height="164" rx="38" fill="#84cc16" fill-opacity="0.34"/>',
+    '<text x="512" y="360" text-anchor="middle" fill="#0f172a" font-size="42" font-family="Noto Sans JP, sans-serif">AI Scene</text>',
+    `<text x="512" y="492" text-anchor="middle" fill="#334155" font-size="30" font-family="Noto Sans JP, sans-serif">${scene}</text>`,
+    '</svg>',
+  ].join('');
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
 function normalizeScore(value, fallback = 74) {
@@ -384,6 +467,28 @@ function buildReplyGenerationPrompts(level, previousFollowUp = '') {
   };
 }
 
+function buildImageGenerationPrompts(level) {
+  return {
+    systemPrompt: [
+      'You are an expert Korean writing teacher for Japanese learners.',
+      'Create one image-description writing task.',
+      'Rules:',
+      '- Return valid JSON only with the fields prompt, scene, answer, hint, and imagePrompt.',
+      '- prompt must be in Japanese and instruct the learner to describe an image in Korean.',
+      '- scene must be a short Japanese scene summary.',
+      '- answer must be one natural Korean sample description (1-2 sentences).',
+      '- hint must be in Japanese and brief.',
+      '- imagePrompt must be a concise English prompt for generating an illustration of the scene.',
+      '- Keep the scene realistic and easy to describe.',
+      '- Do not add markdown, code fences, or extra text.',
+    ].join(' '),
+    userPrompt: [
+      `Create one image-description task for a ${level} Korean learner.`,
+      'Return JSON only.',
+    ].join(' '),
+  };
+}
+
 function buildScoringPrompts({ prompt, modelAnswer, userAnswer, level }) {
   return {
     systemPrompt: [
@@ -444,6 +549,33 @@ function buildReplyScoringPrompts({ prompt, situation, modelAnswer, userAnswer, 
     userPrompt: [
       `Prompt: ${prompt}`,
       `Situation: ${situation}`,
+      `Model answer: ${modelAnswer}`,
+      `User answer: ${userAnswer}`,
+      `Level: ${level}`,
+      'Return JSON only.',
+    ].join('\n'),
+  };
+}
+
+function buildImageScoringPrompts({ prompt, situation, modelAnswer, userAnswer, level }) {
+  return {
+    systemPrompt: [
+      'You are a precise and encouraging Korean writing instructor for Japanese learners.',
+      'Judge a learner description of an image scene fairly and conservatively.',
+      'Rules:',
+      '- Prefer 正解 when the learner sentence is grammatical and describes the given scene naturally.',
+      '- Use 惜しい only when meaning mostly works but grammar, particles, spacing, or wording should be improved.',
+      '- Use 不正解 only when the sentence is unrelated to the scene or has serious grammar issues.',
+      '- Accept wording variation if the scene description remains natural and faithful.',
+      '- Return valid JSON only with fields: status, score, feedback, explanation, correctedText, alternatives.',
+      '- feedback and explanation must be in Japanese.',
+      '- correctedText and alternatives must be natural Korean.',
+      '- Never include English words in feedback or explanation.',
+      '- Do not add markdown, code fences, or extra text.',
+    ].join(' '),
+    userPrompt: [
+      `Prompt: ${prompt}`,
+      `Scene: ${situation}`,
       `Model answer: ${modelAnswer}`,
       `User answer: ${userAnswer}`,
       `Level: ${level}`,
@@ -519,6 +651,59 @@ function sanitizeQuestionGenerationResult(rawResult, fallback) {
     answer,
     hint,
   };
+}
+
+function sanitizeImageGenerationResult(rawResult, fallback) {
+  const prompt = String(rawResult?.prompt || fallback.prompt || '').trim();
+  const scene = String(rawResult?.scene || fallback.scene || '').trim();
+  const answer = String(rawResult?.answer || fallback.answer || '').trim();
+  const hint = String(rawResult?.hint || fallback.hint || '').trim();
+  const imagePrompt = String(rawResult?.imagePrompt || rawResult?.image_prompt || '').trim();
+  const imageUrl = String(rawResult?.imageUrl || fallback.imageUrl || '').trim();
+
+  return {
+    mode: 'image',
+    prompt,
+    scene,
+    answer,
+    hint,
+    imagePrompt,
+    imageUrl,
+  };
+}
+
+async function generateOpenAiImageDataUri(prompt) {
+  const apiKey = process.env.OPENAI_API_KEY || '';
+  if (!apiKey) return '';
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
+        prompt: String(prompt || 'A friendly everyday Korean learning scene illustration.'),
+        size: '1024x1024',
+        response_format: 'b64_json',
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.warn('OpenAI image generation failed:', response.status, errorText);
+      return '';
+    }
+
+    const data = await response.json();
+    const b64 = data?.data?.[0]?.b64_json || '';
+    return b64 ? `data:image/png;base64,${b64}` : '';
+  } catch (error) {
+    console.warn('OpenAI image generation request error:', error.message);
+    return '';
+  }
 }
 
 function getExternalTtsConfig() {
@@ -765,13 +950,21 @@ app.post('/api/generate-question', async (req, res) => {
 
   if (!hasRequiredKey) {
     console.warn('No AI API key found. Returning random built-in fallback question.');
-    return res.json(practiceMode === 'reply' ? sanitizeReplyGenerationResult(null, getFallbackReplyPrompt(level, previousFollowUp)) : sanitizeQuestionGenerationResult(null, getFallbackQuestion(level)));
+    if (practiceMode === 'reply') {
+      return res.json(sanitizeReplyGenerationResult(null, getFallbackReplyPrompt(level, previousFollowUp)));
+    }
+    if (practiceMode === 'image') {
+      return res.json(sanitizeImageGenerationResult(null, getFallbackImageQuestion(level)));
+    }
+    return res.json(sanitizeQuestionGenerationResult(null, getFallbackQuestion(level)));
   }
 
   try {
     const prompts = practiceMode === 'reply'
       ? buildReplyGenerationPrompts(level, previousFollowUp)
-      : buildQuestionGenerationPrompts(level, style);
+      : practiceMode === 'image'
+        ? buildImageGenerationPrompts(level)
+        : buildQuestionGenerationPrompts(level, style);
     const result = await askAi({
       provider,
       systemPrompt: prompts.systemPrompt,
@@ -780,12 +973,31 @@ app.post('/api/generate-question', async (req, res) => {
     });
 
     if (result) {
-      return res.json(practiceMode === 'reply'
-        ? sanitizeReplyGenerationResult(result, getFallbackReplyPrompt(level, previousFollowUp))
-        : sanitizeQuestionGenerationResult(result, getFallbackQuestion(level)));
+      if (practiceMode === 'reply') {
+        return res.json(sanitizeReplyGenerationResult(result, getFallbackReplyPrompt(level, previousFollowUp)));
+      }
+
+      if (practiceMode === 'image') {
+        const fallback = getFallbackImageQuestion(level);
+        const sanitized = sanitizeImageGenerationResult(result, fallback);
+        const preferredImagePrompt = sanitized.imagePrompt || `A clean illustration of: ${sanitized.scene || fallback.scene}`;
+        const generatedImageUrl = await generateOpenAiImageDataUri(preferredImagePrompt);
+        return res.json({
+          ...sanitized,
+          imageUrl: generatedImageUrl || sanitized.imageUrl || fallback.imageUrl || buildSceneSvgDataUri(sanitized.scene || fallback.scene),
+        });
+      }
+
+      return res.json(sanitizeQuestionGenerationResult(result, getFallbackQuestion(level)));
     }
 
-    return res.json(practiceMode === 'reply' ? sanitizeReplyGenerationResult(null, getFallbackReplyPrompt(level, previousFollowUp)) : sanitizeQuestionGenerationResult(null, getFallbackQuestion(level)));
+    if (practiceMode === 'reply') {
+      return res.json(sanitizeReplyGenerationResult(null, getFallbackReplyPrompt(level, previousFollowUp)));
+    }
+    if (practiceMode === 'image') {
+      return res.json(sanitizeImageGenerationResult(null, getFallbackImageQuestion(level)));
+    }
+    return res.json(sanitizeQuestionGenerationResult(null, getFallbackQuestion(level)));
   } catch (error) {
     console.error(`${provider} generation failed:`, error.message);
     res.status(500).json({ error: 'Failed to generate question' });
@@ -815,7 +1027,9 @@ app.post('/api/score-answer', async (req, res) => {
   try {
     const prompts = practiceMode === 'reply'
       ? buildReplyScoringPrompts({ prompt, situation, modelAnswer, userAnswer, level })
-      : buildScoringPrompts({ prompt, modelAnswer, userAnswer, level });
+      : practiceMode === 'image'
+        ? buildImageScoringPrompts({ prompt, situation, modelAnswer, userAnswer, level })
+        : buildScoringPrompts({ prompt, modelAnswer, userAnswer, level });
     const result = await askAi({
       provider,
       systemPrompt: prompts.systemPrompt,

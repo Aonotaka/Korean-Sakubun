@@ -2,8 +2,10 @@ const levelSelect = document.getElementById('levelSelect');
 const practiceModeSelect = document.getElementById('practiceModeSelect');
 const questionCountSelect = document.getElementById('questionCountSelect');
 const startBtn = document.getElementById('startBtn');
-const generateBtn = document.getElementById('generateBtn');
 const scenarioText = document.getElementById('scenarioText');
+const imagePromptBox = document.getElementById('imagePromptBox');
+const imagePromptImage = document.getElementById('imagePromptImage');
+const imagePromptCaption = document.getElementById('imagePromptCaption');
 const promptText = document.getElementById('promptText');
 const answerInput = document.getElementById('answerInput');
 const submitBtn = document.getElementById('submitBtn');
@@ -152,7 +154,17 @@ function updateAiStatus(message, ready = false) {
 }
 
 function getPracticeModeLabel(mode) {
-  return mode === 'reply' ? '友達メッセージ返信' : '日本語→韓国語';
+  if (mode === 'reply') return '友達メッセージ返信';
+  if (mode === 'image') return '画像を見て作文';
+  return '日本語→韓国語';
+}
+
+function getSelectedPracticeMode() {
+  const selected = String(practiceModeSelect?.value || 'translation');
+  if (selected === 'reply' || selected === 'image') {
+    return selected;
+  }
+  return 'translation';
 }
 
 function getSessionQuestionCount(requestedCount, mode) {
@@ -161,6 +173,26 @@ function getSessionQuestionCount(requestedCount, mode) {
     return Math.max(baseCount * 2, 8);
   }
   return baseCount;
+}
+
+function buildLocalImageDataUrl(sceneText = '公園で人と犬が散歩しています。') {
+  const escaped = String(sceneText)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .slice(0, 56);
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="768" viewBox="0 0 1024 768">',
+    '<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ffe9d9"/><stop offset="100%" stop-color="#dbeafe"/></linearGradient></defs>',
+    '<rect width="1024" height="768" fill="url(#bg)"/>',
+    '<circle cx="200" cy="180" r="86" fill="#facc15" fill-opacity="0.35"/>',
+    '<rect x="120" y="430" width="780" height="210" rx="26" fill="#ffffff" fill-opacity="0.86"/>',
+    '<rect x="80" y="520" width="860" height="160" rx="32" fill="#84cc16" fill-opacity="0.36"/>',
+    '<text x="512" y="360" text-anchor="middle" fill="#0f172a" font-size="42" font-family="Noto Sans JP, sans-serif">AI Scene</text>',
+    `<text x="512" y="485" text-anchor="middle" fill="#334155" font-size="30" font-family="Noto Sans JP, sans-serif">${escaped}</text>`,
+    '</svg>',
+  ].join('');
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
 function clearChatTranscript() {
@@ -217,34 +249,46 @@ function updateTtsStatus(message) {
 }
 
 function syncPracticeModeUi() {
-  const selectedMode = practiceModeSelect?.value === 'reply' ? 'reply' : 'translation';
+  const selectedMode = getSelectedPracticeMode();
 
   if (answerInput) {
     answerInput.placeholder = selectedMode === 'reply'
       ? '例: 오늘은 괜찮아. 어디서 만날까?'
-      : '例: 내일 친구랑 영화를 보러 갈 거예요.';
+      : selectedMode === 'image'
+        ? '例: 공원에서 사람들이 산책하고 있어요.'
+        : '例: 내일 친구랑 영화를 보러 갈 거예요.';
   }
 
   if (promptLabel && currentQuestions.length === 0) {
-    promptLabel.textContent = selectedMode === 'reply' ? '友達のメッセージ' : '日本語の文';
+    promptLabel.textContent = selectedMode === 'reply'
+      ? '友達のメッセージ'
+      : selectedMode === 'image'
+        ? '画像の場面'
+        : '日本語の文';
   }
 
   if (practiceHints[0]) {
     practiceHints[0].textContent = selectedMode === 'reply'
       ? '返信モードでは、短くても相手に合うトーンで返すことを意識してください。'
-      : 'ハングル入力モードに切り替えて入力するとスムーズです。';
+      : selectedMode === 'image'
+        ? '画像モードでは、見える情報を1〜2文で具体的に描写してください。'
+        : 'ハングル入力モードに切り替えて入力するとスムーズです。';
   }
 
   if (practiceHints[1]) {
     practiceHints[1].textContent = selectedMode === 'reply'
       ? '返信モードは長めセッションになり、毎ターン会話の続きと採点が返ります。'
-      : '音声読み上げボタンは、回答後に使えます。';
+      : selectedMode === 'image'
+        ? '画像モードでも回答ごとに採点・添削が返ります。'
+        : '音声読み上げボタンは、回答後に使えます。';
   }
 
   if (currentQuestions.length === 0 && promptText) {
     promptText.textContent = selectedMode === 'reply'
       ? '返信したいメッセージに備えて「セッション開始」を押してください。'
-      : 'レベルを選んで「セッション開始」を押してください。';
+      : selectedMode === 'image'
+        ? '画像作文を始めるには「セッション開始」を押してください。'
+        : 'レベルを選んで「セッション開始」を押してください。';
   }
 }
 
@@ -254,7 +298,7 @@ async function applyPracticeQueryParams() {
   const level = params.get('level');
   const autostart = params.get('autostart');
 
-  if (practiceModeSelect && (mode === 'reply' || mode === 'translation')) {
+  if (practiceModeSelect && (mode === 'reply' || mode === 'translation' || mode === 'image')) {
     practiceModeSelect.value = mode;
   }
 
@@ -719,7 +763,7 @@ function addReviewItem(question, status) {
 
 async function startSession() {
   currentLevel = levelSelect.value;
-  currentPracticeMode = practiceModeSelect?.value === 'reply' ? 'reply' : 'translation';
+  currentPracticeMode = getSelectedPracticeMode();
   const count = getSessionQuestionCount(questionCountSelect.value, currentPracticeMode);
   sessionWrongQuestions = [];
   startBtn.disabled = true;
@@ -800,6 +844,18 @@ async function generateQuestion(previousFollowUp = '') {
           source: 'ai',
         };
       }
+    } else if (currentPracticeMode === 'image') {
+      if (data && data.prompt && data.answer && data.imageUrl) {
+        return {
+          prompt: data.prompt,
+          answer: data.answer,
+          hint: data.hint,
+          imageUrl: data.imageUrl,
+          scene: data.scene || '',
+          mode: 'image',
+          source: 'ai',
+        };
+      }
     } else if (data && data.prompt && data.answer && !hasMismatchByKeyword(data.prompt, data.answer)) {
       return { prompt: data.prompt, answer: data.answer, hint: data.hint, mode: 'translation', source: 'ai' };
     }
@@ -821,19 +877,32 @@ async function generateQuestion(previousFollowUp = '') {
     return fallbackReply;
   }
 
+  if (currentPracticeMode === 'image') {
+    const imageFallbacks = [
+      {
+        prompt: '画像を見て、韓国語で1〜2文の描写を書いてください。',
+        scene: '公園で人と犬が散歩している午後の風景',
+        answer: '공원에서 사람들이 강아지와 함께 산책하고 있어요.',
+        hint: '場所(공원에서)と動作(-고 있어요)を入れると自然です。',
+      },
+      {
+        prompt: '画像を見て、韓国語で1〜2文の描写を書いてください。',
+        scene: 'カフェでノートPCを見ながら話している二人',
+        answer: '카페에서 두 사람이 노트북을 보면서 이야기하고 있어요.',
+        hint: '同時動作は -면서 を使うと描写しやすいです。',
+      },
+    ];
+    const pick = imageFallbacks[Math.floor(Math.random() * imageFallbacks.length)];
+    return {
+      ...pick,
+      imageUrl: buildLocalImageDataUrl(pick.scene),
+      mode: 'image',
+      source: 'fallback',
+    };
+  }
+
   const fallback = questionBank[currentLevel][Math.floor(Math.random() * questionBank[currentLevel].length)];
   return { ...fallback, mode: 'translation', source: 'fallback' };
-}
-
-async function generateSingleQuestion() {
-  currentPracticeMode = practiceModeSelect?.value === 'reply' ? 'reply' : 'translation';
-  const question = await generateQuestion();
-  currentQuestions = [question];
-  currentIndex = 0;
-  sessionWrongQuestions = [];
-  if (sessionResultBox) sessionResultBox.hidden = true;
-  showQuestion();
-  updateAiStatus(question.source === 'ai' ? 'AI生成の問題を表示しました。' : 'サンプル問題を表示しました。', question.source === 'ai');
 }
 
 function showQuestion() {
@@ -846,33 +915,45 @@ function showQuestion() {
     return;
   }
 
+  const questionMode = question.mode || currentPracticeMode;
+  const isReplyMode = questionMode === 'reply';
+  const isImageMode = questionMode === 'image';
+
   if (scenarioText) {
-    const isReplyMode = question.mode === 'reply' || currentPracticeMode === 'reply';
     scenarioText.hidden = !isReplyMode;
     scenarioText.textContent = isReplyMode ? (question.prompt || '友達からのメッセージ') : '';
-    promptText.textContent = isReplyMode ? (question.situation || '返信内容を韓国語で入力してください。') : question.prompt;
+    promptText.textContent = isReplyMode
+      ? (question.situation || '返信内容を韓国語で入力してください。')
+      : (question.prompt || '画像を見て韓国語で描写してください。');
     if (chatTranscript) {
       chatTranscript.hidden = !isReplyMode;
     }
   } else {
     promptText.textContent = question.prompt;
   }
+
+  if (imagePromptBox && imagePromptImage && imagePromptCaption) {
+    imagePromptBox.hidden = !isImageMode;
+    if (isImageMode) {
+      imagePromptImage.src = question.imageUrl || buildLocalImageDataUrl(question.scene || '街の風景');
+      imagePromptCaption.textContent = question.scene ? `画像の場面: ${question.scene}` : '画像の場面を韓国語で描写してください。';
+    }
+  }
+
   if (promptLabel) {
-    const isReplyMode = question.mode === 'reply' || currentPracticeMode === 'reply';
-    promptLabel.textContent = isReplyMode ? '友達のメッセージ' : '日本語の文';
+    promptLabel.textContent = isReplyMode ? '友達のメッセージ' : isImageMode ? '画像の場面' : '日本語の文';
   }
   if (nextBtn) {
-    const isReplyMode = question.mode === 'reply' || currentPracticeMode === 'reply';
-    nextBtn.textContent = isReplyMode ? '次のメッセージへ' : '次の問題へ';
+    nextBtn.textContent = isReplyMode ? '次のメッセージへ' : isImageMode ? '次の画像へ' : '次の問題へ';
   }
-  if (question.mode === 'reply' || currentPracticeMode === 'reply') {
+  if (isReplyMode) {
     if (replyTranscriptLastTurn !== currentIndex) {
       appendChatBubble('friend', '友達', question.situation || question.prompt || 'メッセージ');
       replyTranscriptLastTurn = currentIndex;
     }
-    if (chatTranscript) {
-      chatTranscript.classList.add('chat-transcript--reply');
-    }
+  }
+  if (chatTranscript) {
+    chatTranscript.classList.toggle('chat-transcript--reply', isReplyMode);
   }
   progressBadge.textContent = `${currentIndex + 1} / ${currentQuestions.length}`;
   levelBadge.textContent = getLevelLabel(currentLevel);
@@ -1013,7 +1094,9 @@ async function evaluateAnswer() {
   }
 
   const similarity = similarityRatio(normalizedUser, normalizedExpected);
-  const isReplyMode = question.mode === 'reply' || currentPracticeMode === 'reply';
+  const resolvedMode = question.mode || currentPracticeMode;
+  const isReplyMode = resolvedMode === 'reply';
+  const isImageMode = resolvedMode === 'image';
 
   if (!isReplyMode) {
     if (normalizedUser === normalizedExpected || similarity >= 0.84) {
@@ -1095,7 +1178,7 @@ async function evaluateAnswer() {
   feedbackStatus.textContent = status;
   feedbackStatus.className = `feedback-status ${statusClass}`;
   feedbackText.textContent = `採点: ${score}点`;
-  modelAnswerBox.innerHTML = `<strong>${isReplyMode ? '模範返信' : '模範解答'}</strong><div>${modelAnswerText}</div>`;
+  modelAnswerBox.innerHTML = `<strong>${isReplyMode ? '模範返信' : isImageMode ? '模範描写' : '模範解答'}</strong><div>${modelAnswerText}</div>`;
   feedbackExplanation.textContent = `${feedback}\n\n${structureAdvice}\n\n${explanation}\n\n修正案: ${correctedText}`;
   alternatives.innerHTML = '';
   alternativesList.forEach((item) => {
@@ -1195,6 +1278,7 @@ function retryWrongQuestions() {
 function startReviewItem(index) {
   const item = progressState.reviewQueue[index];
   if (!item) return;
+  currentPracticeMode = 'translation';
   currentQuestions = [{ prompt: item.prompt, answer: item.answer, hint: item.hint, source: 'review' }];
   currentIndex = 0;
   currentLevel = 'beginner';
@@ -1203,7 +1287,6 @@ function startReviewItem(index) {
 }
 
 startBtn.addEventListener('click', startSession);
-generateBtn.addEventListener('click', generateSingleQuestion);
 submitBtn.addEventListener('click', evaluateAnswer);
 hintBtn.addEventListener('click', showHint);
 nextBtn.addEventListener('click', goToNextQuestion);

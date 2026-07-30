@@ -215,17 +215,17 @@
               <a href="/?mode=reply&level=beginner&autostart=1#practice" class="btn btn--primary">このモードを始める</a>
             </div>
           </article>
-          <article class="mode-card mode-card--image is-coming-soon">
+          <article class="mode-card mode-card--image">
             <span class="mode-card__eyebrow">Mode 03</span>
             <h3>画像を見て作文</h3>
-            <p>写真やイラストを見て、その場面を韓国語で説明するモードです。入口がないのではなく、まだ未実装です。</p>
+            <p>AIが生成した画像を見て、場面を韓国語で描写するモードです。描写文は毎回添削され、自然な言い換えも確認できます。</p>
             <ul class="mode-card__list">
-              <li>場面描写の語彙を鍛える想定</li>
-              <li>会話ではなく説明文の作文向け</li>
-              <li>今後の追加候補として準備中</li>
+              <li>画像を見て韓国語で1〜2文を作成</li>
+              <li>描写文の自然さをAIが採点・添削</li>
+              <li>語彙と文の組み立てを同時に強化</li>
             </ul>
             <div class="mode-card__actions">
-              <span class="coming-soon-badge">準備中</span>
+              <a href="/?mode=image&level=beginner&autostart=1#practice" class="btn btn--secondary">このモードを始める</a>
             </div>
           </article>
         </div>
@@ -273,6 +273,7 @@
             <select id="practiceModeSelect">
               <option value="translation">日本語→韓国語</option>
               <option value="reply">友達メッセージ返信</option>
+              <option value="image">画像を見て作文</option>
             </select>
           </label>
           <label>
@@ -285,7 +286,6 @@
           </label>
           <div class="button-stack">
             <button id="startBtn" class="btn btn--primary">セッション開始</button>
-            <button id="generateBtn" class="btn btn--secondary">AIで問題を生成</button>
           </div>
           <p id="sessionStatus" class="session-status">AI接続状態: 取得中...</p>
           <p id="ttsStatus" class="session-status">音声状態: ブラウザ韓国語音声 (無料)</p>
@@ -304,6 +304,10 @@
           </div>
 
           <div id="chatTranscript" class="chat-transcript" hidden></div>
+          <div id="imagePromptBox" class="image-prompt-box" hidden>
+            <img id="imagePromptImage" class="image-prompt-image" alt="AI生成の作文用画像" loading="lazy" />
+            <p id="imagePromptCaption" class="panel__hint"></p>
+          </div>
           <p id="scenarioText" class="panel__hint" hidden></p>
           <p class="prompt-label">日本語の文</p>
           <h3 id="promptText">セッションを開始してください</h3>
