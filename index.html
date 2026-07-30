@@ -415,6 +415,20 @@
           <p id="feedbackSubmitStatus" class="session-status"></p>
           <ul id="feedbackList" class="feedback-list"></ul>
         </div>
+
+        <div class="panel">
+          <h2>プレミアム保存</h2>
+          <p>自分だけの文章を登録して、何度も見直せる保存領域です。</p>
+          <p id="premiumStatus" class="session-status"></p>
+          <form id="premiumMemoryForm" class="feedback-form">
+            <textarea id="premiumMemoryText" rows="3" maxlength="280" placeholder="覚えたい韓国語や日本語の文" required></textarea>
+            <input id="premiumMemoryNote" maxlength="120" placeholder="メモ (任意)" />
+            <label class="input-label" for="premiumMemoryTarget">復習回数</label>
+            <input id="premiumMemoryTarget" type="number" min="1" max="20" value="3" />
+            <button id="premiumMemorySubmitBtn" class="btn btn--primary" type="submit">プレミアムに保存</button>
+          </form>
+          <ul id="premiumMemoryList" class="review-list"></ul>
+        </div>
       </section>
     </main>
 

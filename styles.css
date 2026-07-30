@@ -142,6 +142,10 @@ img {
 }
 
 .top-profile__state {
+.top-profile__state.is-premium {
+  background: rgba(15, 118, 110, 0.14);
+  color: #0f766e;
+}
   font-size: 0.72rem;
   color: var(--accent-secondary);
 }

@@ -8,10 +8,19 @@ const { validateRegistrationInput } = require('./services/validation');
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const isRender = Boolean(process.env.RENDER);
-const DATA_DIR = path.join(__dirname, 'data');
+const DEFAULT_DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = path.resolve(process.env.DATA_DIR || DEFAULT_DATA_DIR);
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const POSTS_FILE = path.join(DATA_DIR, 'posts.json');
 const FEEDBACK_FILE = path.join(DATA_DIR, 'feedback.json');
+const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const PREMIUM_ACCESS_EMAILS = new Set(
+  String(process.env.PREMIUM_ACCESS_EMAILS || '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean),
+);
 const sessions = new Map();
 
 if (!fs.existsSync(DATA_DIR)) {
@@ -65,6 +74,63 @@ function normalizePasswordStorage(users) {
     }
     return user;
   });
+}
+
+function normalizeProgress(progress) {
+  const source = progress && typeof progress === 'object' ? progress : {};
+  return {
+    attempted: Number(source.attempted) || 0,
+    correct: Number(source.correct) || 0,
+    streak: Number(source.streak) || 0,
+    reviewQueue: Array.isArray(source.reviewQueue) ? source.reviewQueue : [],
+  };
+}
+
+function normalizePremiumMemory(memory) {
+  if (!memory || typeof memory !== 'object') {
+    return null;
+  }
+
+  const text = String(memory.text || '').trim();
+  if (!text) {
+    return null;
+  }
+
+  return {
+    id: String(memory.id || `memory-${Date.now()}`),
+    text: text.slice(0, 280),
+    note: String(memory.note || '').trim().slice(0, 120),
+    targetRepeats: Math.max(1, Math.min(20, Number(memory.targetRepeats) || 3)),
+    reviewCount: Math.max(0, Number(memory.reviewCount) || 0),
+    lastReviewedAt: String(memory.lastReviewedAt || '').trim(),
+    createdAt: String(memory.createdAt || new Date().toISOString()),
+    updatedAt: String(memory.updatedAt || new Date().toISOString()),
+  };
+}
+
+function normalizeUserRecord(user) {
+  const normalized = { ...user };
+  normalized.progress = normalizeProgress(normalized.progress);
+  normalized.plan = normalized.plan === 'premium' ? 'premium' : 'free';
+  normalized.premiumMemories = Array.isArray(normalized.premiumMemories)
+    ? normalized.premiumMemories.map(normalizePremiumMemory).filter(Boolean)
+    : [];
+  return normalized;
+}
+
+function isPremiumUser(user) {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (user.plan === 'premium') return true;
+  const email = String(user.email || '').trim().toLowerCase();
+  return PREMIUM_ACCESS_EMAILS.has(email);
+}
+
+function ensureJsonSeed(filePath, seedValue) {
+  if (fs.existsSync(filePath)) {
+    return;
+  }
+  writeJson(filePath, seedValue);
 }
 
 function isStrongPassword(password) {
@@ -155,8 +221,12 @@ function writeJson(filePath, data) {
 }
 
 function ensureSeedData() {
-  let users = readJson(USERS_FILE, []);
-  users = normalizePasswordStorage(users);
+  const seedUsers = readJson(path.join(DEFAULT_DATA_DIR, 'users.json'), []);
+  const seedPosts = readJson(path.join(DEFAULT_DATA_DIR, 'posts.json'), []);
+  const seedFeedback = readJson(path.join(DEFAULT_DATA_DIR, 'feedback.json'), []);
+
+  let users = normalizePasswordStorage(readJson(USERS_FILE, seedUsers));
+  users = users.map(normalizeUserRecord);
   const adminEmail = process.env.ADMIN_EMAIL ? String(process.env.ADMIN_EMAIL).trim() : '';
   const adminPassword = process.env.ADMIN_PASSWORD ? String(process.env.ADMIN_PASSWORD).trim() : '';
   const adminUser = users.find((user) => user.role === 'admin');
@@ -172,17 +242,21 @@ function ensureSeedData() {
         email: adminEmail,
         password: hashPassword(adminPassword),
         role: 'admin',
+        plan: 'premium',
         progress: { attempted: 0, correct: 0, streak: 0, reviewQueue: [] },
+        premiumMemories: [],
       });
     }
   }
 
-  if (users.length) {
+  if (users.length || !fs.existsSync(USERS_FILE)) {
     writeJson(USERS_FILE, users);
   }
 
-  const posts = readJson(POSTS_FILE, []);
-  if (!posts.length) {
+  const posts = readJson(POSTS_FILE, seedPosts);
+  if (!posts.length && seedPosts.length) {
+    writeJson(POSTS_FILE, seedPosts);
+  } else if (!fs.existsSync(POSTS_FILE)) {
     posts.push({
       id: 'welcome-post',
       title: '韓国語作文の始め方',
@@ -195,10 +269,47 @@ function ensureSeedData() {
     writeJson(POSTS_FILE, posts);
   }
 
-  const feedback = readJson(FEEDBACK_FILE, []);
-  if (!Array.isArray(feedback)) {
+  const feedback = readJson(FEEDBACK_FILE, seedFeedback);
+  if (Array.isArray(feedback)) {
+    if (!fs.existsSync(FEEDBACK_FILE)) {
+      writeJson(FEEDBACK_FILE, feedback);
+    }
+  } else {
     writeJson(FEEDBACK_FILE, []);
   }
+
+  ensureJsonSeed(SESSIONS_FILE, []);
+}
+
+function loadSessionsFromDisk() {
+  const stored = readJson(SESSIONS_FILE, []);
+  const now = Date.now();
+  sessions.clear();
+
+  if (Array.isArray(stored)) {
+    stored.forEach((item) => {
+      const sessionId = String(item?.sessionId || '').trim();
+      const userId = String(item?.userId || '').trim();
+      const createdAt = new Date(item?.createdAt || now).getTime();
+      const lastSeenAt = new Date(item?.lastSeenAt || item?.createdAt || now).getTime();
+      if (!sessionId || !userId) {
+        return;
+      }
+      if (Number.isFinite(lastSeenAt) && now - lastSeenAt <= SESSION_TTL_MS) {
+        sessions.set(sessionId, { userId, createdAt: createdAt || now, lastSeenAt: lastSeenAt || now });
+      }
+    });
+  }
+}
+
+function persistSessions() {
+  const stored = Array.from(sessions.entries()).map(([sessionId, record]) => ({
+    sessionId,
+    userId: record.userId,
+    createdAt: new Date(record.createdAt || Date.now()).toISOString(),
+    lastSeenAt: new Date(record.lastSeenAt || record.createdAt || Date.now()).toISOString(),
+  }));
+  writeJson(SESSIONS_FILE, stored);
 }
 
 function parseCookies(req) {
@@ -213,8 +324,8 @@ function parseCookies(req) {
 }
 
 function findUserById(userId) {
-  const users = readJson(USERS_FILE, []);
-  return users.find((user) => user.id === userId) || null;
+  const users = normalizePasswordStorage(readJson(USERS_FILE, []));
+  return users.map(normalizeUserRecord).find((user) => user.id === userId) || null;
 }
 
 function getSessionUser(req) {
@@ -223,18 +334,57 @@ function getSessionUser(req) {
   if (!sessionId || !sessions.has(sessionId)) {
     return null;
   }
-  return findUserById(sessions.get(sessionId));
+
+  const sessionRecord = sessions.get(sessionId);
+  const lastSeenAt = Number(sessionRecord.lastSeenAt || sessionRecord.createdAt || 0);
+  if (Number.isFinite(lastSeenAt) && Date.now() - lastSeenAt > SESSION_TTL_MS) {
+    sessions.delete(sessionId);
+    persistSessions();
+    return null;
+  }
+
+  sessionRecord.lastSeenAt = Date.now();
+  const user = findUserById(sessionRecord.userId);
+  if (!user) {
+    sessions.delete(sessionId);
+    persistSessions();
+    return null;
+  }
+
+  return user;
 }
 
 function setSession(res, user) {
   const sessionId = crypto.randomBytes(16).toString('hex');
-  sessions.set(sessionId, user.id);
-  res.setHeader('Set-Cookie', `sessionId=${sessionId}; Path=/; HttpOnly; Max-Age=86400`);
+  sessions.set(sessionId, { userId: user.id, createdAt: Date.now(), lastSeenAt: Date.now() });
+  persistSessions();
+  res.setHeader('Set-Cookie', `sessionId=${sessionId}; Path=/; HttpOnly; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`);
   return sessionId;
 }
 
-function clearSession(res) {
+function clearSession(req, res) {
+  const cookies = parseCookies(req);
+  const sessionId = cookies.sessionId;
+  if (sessionId && sessions.has(sessionId)) {
+    sessions.delete(sessionId);
+    persistSessions();
+  }
   res.setHeader('Set-Cookie', 'sessionId=; Path=/; HttpOnly; Max-Age=0');
+}
+
+function updateUserRecord(userId, updater) {
+  const users = normalizePasswordStorage(readJson(USERS_FILE, []));
+  const normalizedUsers = users.map(normalizeUserRecord);
+  const index = normalizedUsers.findIndex((user) => user.id === userId);
+  if (index < 0) {
+    return null;
+  }
+
+  const current = normalizedUsers[index];
+  const updated = normalizeUserRecord(updater({ ...current }) || current);
+  normalizedUsers[index] = updated;
+  saveUsers(normalizedUsers);
+  return updated;
 }
 
 function saveUsers(users) {
@@ -487,11 +637,11 @@ function buildSceneSvgDataUri(sceneText = '公園で人と犬が散歩してい�
     '<ellipse cx="330" cy="135" rx="110" ry="54" fill="#ffffff" fill-opacity="0.54"/>',
     '<ellipse cx="760" cy="150" rx="84" ry="40" fill="#ffffff" fill-opacity="0.58"/>',
     `<rect x="0" y="500" width="1024" height="268" fill="${groundColor}" fill-opacity="0.72"/>`,
-    isPark ? '<g><path d="M122 562c20-58 54-94 98-96 42-2 84 26 116 90" fill="none" stroke="#2f855a" stroke-width="12" stroke-linecap="round"/><circle cx="226" cy="436" r="28" fill="#22c55e"/><rect x="218" y="460" width="16" height="100" rx="8" fill="#8b5a2b"/><circle cx="226" cy="402" r="52" fill="#16a34a" fill-opacity="0.8"/></g>' : '',
-    isCafe ? '<g><rect x="118" y="350" width="250" height="178" rx="22" fill="#fff7ed" stroke="#fdba74"/><rect x="174" y="394" width="108" height="58" rx="12" fill="#dbeafe"/><circle cx="196" cy="424" r="16" fill="#93c5fd"/><circle cx="260" cy="424" r="16" fill="#93c5fd"/><rect x="388" y="404" width="112" height="42" rx="21" fill="#fde68a"/><rect x="340" y="370" width="14" height="120" rx="7" fill="#a16207"/></g>' : '',
-    isRain ? '<g opacity="0.72"><path d="M210 282l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M270 254l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M334 292l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M400 258l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M462 286l-16 30" stroke="#3b82f6" stroke-width="4"/></g><path d="M170 462c96-122 192-122 296 0" fill="#94a3b8" opacity="0.34"/>' : '',
-    isMeeting ? '<g><rect x="150" y="300" width="724" height="252" rx="28" fill="#ffffff" stroke="#cbd5e1"/><rect x="202" y="356" width="620" height="26" rx="13" fill="#e2e8f0"/><rect x="202" y="398" width="520" height="26" rx="13" fill="#cbd5e1"/><circle cx="242" cy="480" r="26" fill="#93c5fd"/><circle cx="300" cy="478" r="22" fill="#fda4af"/><circle cx="726" cy="480" r="24" fill="#fde68a"/></g>' : '',
-    isMarket ? '<g><rect x="110" y="364" width="804" height="124" rx="20" fill="#fff7ed" stroke="#fdba74"/><rect x="110" y="334" width="804" height="52" rx="18" fill="#fb7185" opacity="0.8"/><rect x="176" y="406" width="90" height="82" rx="10" fill="#fde68a"/><rect x="288" y="398" width="92" height="90" rx="10" fill="#bfdbfe"/><rect x="400" y="410" width="80" height="78" rx="10" fill="#fecaca"/><rect x="514" y="404" width="86" height="84" rx="10" fill="#bbf7d0"/></g>' : '',
+    isPark ? '<g><rect x="104" y="360" width="152" height="98" rx="18" fill="#f59e0b"/><rect x="120" y="374" width="120" height="14" rx="7" fill="#fde68a"/><rect x="156" y="404" width="86" height="112" rx="14" fill="#fef3c7"/><rect x="182" y="432" width="36" height="54" rx="18" fill="#60a5fa"/><circle cx="208" cy="416" r="18" fill="#fda4af"/><path d="M286 564c24-84 58-126 120-126s92 42 124 126" fill="none" stroke="#15803d" stroke-width="10" stroke-linecap="round"/><rect x="458" y="356" width="164" height="118" rx="18" fill="#fbbf24"/><path d="M490 470l64-102 64 102" fill="#fb923c"/><rect x="500" y="470" width="44" height="82" rx="10" fill="#eab308"/><circle cx="360" cy="392" r="42" fill="#22c55e"/><rect x="350" y="428" width="18" height="92" rx="9" fill="#8b5a2b"/><circle cx="360" cy="360" r="54" fill="${treeColor}" fill-opacity="0.88"/><circle cx="708" cy="426" r="26" fill="#fde68a"/><circle cx="792" cy="438" r="22" fill="#fda4af"/><circle cx="744" cy="468" r="24" fill="#93c5fd"/><circle cx="820" cy="468" r="20" fill="#fca5a5"/><circle cx="742" cy="422" r="18" fill="#334155" fill-opacity="0.75"/><circle cx="820" cy="424" r="18" fill="#334155" fill-opacity="0.75"/><path d="M734 486c18-20 32-28 48-28s30 8 46 28" fill="none" stroke="#334155" stroke-width="6" stroke-linecap="round"/></g>' : '',
+    isCafe ? '<g><rect x="110" y="342" width="280" height="186" rx="22" fill="#fff7ed" stroke="#fdba74"/><rect x="130" y="360" width="120" height="22" rx="11" fill="#fde68a"/><rect x="132" y="400" width="128" height="82" rx="16" fill="#dbeafe"/><rect x="274" y="388" width="80" height="94" rx="18" fill="#fee2e2"/><circle cx="170" cy="440" r="16" fill="#93c5fd"/><circle cx="212" cy="440" r="16" fill="#93c5fd"/><circle cx="314" cy="430" r="18" fill="#fda4af"/><rect x="418" y="390" width="138" height="74" rx="20" fill="#fde68a"/><circle cx="482" cy="426" r="18" fill="#22c55e"/><rect x="448" y="362" width="16" height="122" rx="8" fill="#92400e"/></g>' : '',
+    isRain ? '<g opacity="0.72"><path d="M210 282l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M270 254l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M334 292l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M400 258l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M462 286l-16 30" stroke="#3b82f6" stroke-width="4"/></g><path d="M170 462c96-122 192-122 296 0" fill="#94a3b8" opacity="0.34"/><path d="M600 446c68-92 118-92 188 0" fill="#64748b" opacity="0.18"/><circle cx="680" cy="456" r="24" fill="#fda4af"/><circle cx="760" cy="470" r="24" fill="#93c5fd"/><path d="M656 478c16-18 32-26 48-26s30 8 46 26" fill="none" stroke="#334155" stroke-width="5" stroke-linecap="round"/></g>' : '',
+    isMeeting ? '<g><rect x="150" y="300" width="724" height="252" rx="28" fill="#ffffff" stroke="#cbd5e1"/><rect x="202" y="356" width="620" height="26" rx="13" fill="#e2e8f0"/><rect x="202" y="398" width="520" height="26" rx="13" fill="#cbd5e1"/><circle cx="242" cy="480" r="26" fill="#93c5fd"/><circle cx="300" cy="478" r="22" fill="#fda4af"/><circle cx="726" cy="480" r="24" fill="#fde68a"/><rect x="452" y="428" width="120" height="78" rx="20" fill="#dbeafe"/><path d="M468 452h88" stroke="#475569" stroke-width="6" stroke-linecap="round"/><path d="M490 470h44" stroke="#475569" stroke-width="6" stroke-linecap="round"/></g>' : '',
+    isMarket ? '<g><rect x="110" y="364" width="804" height="124" rx="20" fill="#fff7ed" stroke="#fdba74"/><rect x="110" y="334" width="804" height="52" rx="18" fill="#fb7185" opacity="0.8"/><rect x="176" y="406" width="90" height="82" rx="10" fill="#fde68a"/><rect x="288" y="398" width="92" height="90" rx="10" fill="#bfdbfe"/><rect x="400" y="410" width="80" height="78" rx="10" fill="#fecaca"/><rect x="514" y="404" width="86" height="84" rx="10" fill="#bbf7d0"/><circle cx="664" cy="448" r="28" fill="#fda4af"/><circle cx="736" cy="446" r="26" fill="#93c5fd"/><circle cx="694" cy="472" r="22" fill="#fcd34d"/><circle cx="784" cy="472" r="20" fill="#86efac"/></g>' : '',
     '</svg>',
   ].join('');
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
@@ -600,10 +750,11 @@ function buildImageGenerationPrompts(level) {
       '- scene must be a short Japanese scene summary.',
       '- answer must be one natural Korean sample description (1-2 sentences).',
       '- hint must be in Japanese and brief.',
-      '- imagePrompt must be a detailed English prompt for generating a soft hand-drawn storybook illustration of the scene, not a photo.',
-      '- imagePrompt must include: location, subjects, action, time/light, camera framing, mood, and visual style.',
-      '- imagePrompt should favor watercolor, colored-pencil, or picture-book illustration styling with bright but gentle colors.',
-      '- imagePrompt should describe clearly visible children or people, natural outdoor detail, and a friendly, lively composition when the scene allows it.',
+      '- imagePrompt must be a highly detailed English prompt for generating a warm picture-book illustration of the scene, not a photo.',
+      '- imagePrompt must include: location, subjects, action, time/light, foreground, middle ground, background, camera framing, mood, and visual style.',
+      '- imagePrompt should favor watercolor, colored-pencil, or storybook illustration styling with bright but gentle colors and a clear hand-drawn look.',
+      '- imagePrompt should ask for multiple visible objects, natural gestures, and enough environmental detail that a learner can describe the scene in 1-2 sentences.',
+      '- imagePrompt should describe clearly visible children or people, natural outdoor detail, and a lively composition when the scene allows it.',
       '- imagePrompt must explicitly say: no text, no letters, no watermark, no logo, no UI, no captions.',
       `- targetWords must match this word range: ${profile.targetWords}.`,
       `- vocabFocus must align with this focus: ${profile.vocabFocus}.`,
@@ -618,7 +769,8 @@ function buildImageGenerationPrompts(level) {
       `Vocabulary focus: ${profile.vocabFocus}.`,
       `Grammar focus: ${profile.grammarFocus}.`,
       `Sentence guide: ${profile.sentenceGuide}.`,
-      'The image should look like a warm children’s picture-book illustration with a park, schoolyard, cafe, market, rainy street, or meeting scene depending on the task.',
+      'The image should look like a warm children’s picture-book illustration with rich background detail, multiple visible objects, and a clear foreground/midground/background composition.',
+      'Depending on the task, the scene may show a park, schoolyard, cafe, market, rainy street, or meeting room, but it should never look minimal or empty.',
       'Return JSON only.',
     ].join(' '),
   };
@@ -963,8 +1115,9 @@ async function synthesizeWithOpenAiTts(text, voiceName = 'alloy') {
   };
 }
 
-logStartupSummary();
 ensureSeedData();
+loadSessionsFromDisk();
+logStartupSummary();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -1032,6 +1185,9 @@ app.get('/api/auth/me', (req, res) => {
     role: user.role,
     avatarUrl: user.avatarUrl || '',
     authProvider: user.authProvider || 'password',
+    plan: user.plan || 'free',
+    premiumEnabled: isPremiumUser(user),
+    premiumMemoryCount: Array.isArray(user.premiumMemories) ? user.premiumMemories.length : 0,
   });
 });
 
@@ -1061,7 +1217,16 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   setSession(res, user);
-  res.json({ id: user.id, name: user.name, email: user.email, role: user.role, avatarUrl: user.avatarUrl || '', authProvider: user.authProvider || 'password' });
+  res.json({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    avatarUrl: user.avatarUrl || '',
+    authProvider: user.authProvider || 'password',
+    plan: user.plan || 'free',
+    premiumEnabled: isPremiumUser(user),
+  });
 });
 
 app.post('/api/auth/google', async (req, res) => {
@@ -1099,10 +1264,12 @@ app.post('/api/auth/google', async (req, res) => {
       email: normalizedEmail,
       password: hashPassword(crypto.randomBytes(16).toString('hex')),
       role: 'user',
+      plan: PREMIUM_ACCESS_EMAILS.has(normalizedEmail) ? 'premium' : 'free',
       progress: { attempted: 0, correct: 0, streak: 0, reviewQueue: [] },
       authProvider: 'google',
       googleSub: sub,
       avatarUrl: picture || '',
+      premiumMemories: [],
     };
     users.push(user);
   } else {
@@ -1114,9 +1281,15 @@ app.post('/api/auth/google', async (req, res) => {
     if (!user.progress) {
       user.progress = { attempted: 0, correct: 0, streak: 0, reviewQueue: [] };
     }
+    if (!user.plan) {
+      user.plan = PREMIUM_ACCESS_EMAILS.has(normalizedEmail) ? 'premium' : 'free';
+    }
+    if (!Array.isArray(user.premiumMemories)) {
+      user.premiumMemories = [];
+    }
   }
 
-  saveUsers(users);
+  saveUsers(users.map(normalizeUserRecord));
   setSession(res, user);
   return res.json({
     id: user.id,
@@ -1125,11 +1298,13 @@ app.post('/api/auth/google', async (req, res) => {
     role: user.role,
     avatarUrl: user.avatarUrl || '',
     authProvider: 'google',
+    plan: user.plan || 'free',
+    premiumEnabled: isPremiumUser(user),
   });
 });
 
 app.post('/api/auth/logout', (_req, res) => {
-  clearSession(res);
+  clearSession(_req, res);
   res.json({ ok: true });
 });
 
@@ -1146,13 +1321,13 @@ app.post('/api/progress', (req, res) => {
   if (!user) {
     return res.status(401).json({ error: 'ログインが必要です' });
   }
-  const users = readJson(USERS_FILE, []);
-  const currentUser = users.find((candidate) => candidate.id === user.id);
+  const currentUser = updateUserRecord(user.id, (record) => {
+    record.progress = normalizeProgress(req.body || { attempted: 0, correct: 0, streak: 0, reviewQueue: [] });
+    return record;
+  });
   if (!currentUser) {
     return res.status(404).json({ error: 'ユーザーが見つかりません' });
   }
-  currentUser.progress = req.body || { attempted: 0, correct: 0, streak: 0, reviewQueue: [] };
-  saveUsers(users);
   res.json(currentUser.progress);
 });
 
@@ -1349,6 +1524,7 @@ app.get('/api/feedback', (_req, res) => {
 });
 
 app.post('/api/feedback', (req, res) => {
+  const user = getSessionUser(req);
   const name = String(req.body?.name || '匿名').trim().slice(0, 24);
   const comment = String(req.body?.comment || '').trim();
 
@@ -1364,7 +1540,10 @@ app.post('/api/feedback', (req, res) => {
   const safeFeedback = Array.isArray(feedback) ? feedback : [];
   const newItem = {
     id: `feedback-${Date.now()}`,
-    name: name || '匿名',
+    name: user ? (user.name || name || '匿名') : (name || '匿名'),
+    userId: user ? user.id : '',
+    userEmail: user ? user.email : '',
+    authProvider: user ? (user.authProvider || 'password') : 'guest',
     comment,
     createdAt: new Date().toISOString(),
   };
@@ -1441,6 +1620,7 @@ app.delete('/api/blog/posts/:id', (req, res) => {
 });
 
 app.post('/api/blog/posts/:id/comments', (req, res) => {
+  const user = getSessionUser(req);
   const posts = readJson(POSTS_FILE, []);
   const post = posts.find((item) => item.id === req.params.id);
   if (!post) {
@@ -1448,12 +1628,170 @@ app.post('/api/blog/posts/:id/comments', (req, res) => {
   }
   post.comments.push({
     id: `comment-${Date.now()}`,
-    author: req.body.author || '匿名',
+    author: user ? (user.name || req.body.author || '匿名') : (req.body.author || '匿名'),
+    userId: user ? user.id : '',
+    userEmail: user ? user.email : '',
+    authProvider: user ? (user.authProvider || 'password') : 'guest',
     comment: req.body.comment || '',
     createdAt: new Date().toISOString(),
   });
   savePosts(posts);
   res.json(post);
+});
+
+app.get('/api/premium/memories', (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'ログインが必要です' });
+  }
+  if (!isPremiumUser(user)) {
+    return res.status(403).json({ error: 'プレミアム機能をご利用いただけません' });
+  }
+  res.json(Array.isArray(user.premiumMemories) ? user.premiumMemories : []);
+});
+
+app.post('/api/premium/memories', (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'ログインが必要です' });
+  }
+  if (!isPremiumUser(user)) {
+    return res.status(403).json({ error: 'プレミアム機能をご利用いただけません' });
+  }
+
+  const text = String(req.body?.text || '').trim();
+  const note = String(req.body?.note || '').trim();
+  const targetRepeats = Math.max(1, Math.min(20, Number(req.body?.targetRepeats) || 3));
+  if (!text) {
+    return res.status(400).json({ error: '保存する文章を入力してください' });
+  }
+
+  const savedMemory = updateUserRecord(user.id, (record) => {
+    const memories = Array.isArray(record.premiumMemories) ? record.premiumMemories : [];
+    const newItem = normalizePremiumMemory({
+      id: `memory-${Date.now()}`,
+      text,
+      note,
+      targetRepeats,
+      reviewCount: 0,
+      lastReviewedAt: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    if (!newItem) {
+      return record;
+    }
+    memories.unshift(newItem);
+    record.premiumMemories = memories.slice(0, 100);
+    return record;
+  });
+
+  if (!savedMemory) {
+    return res.status(404).json({ error: 'ユーザーが見つかりません' });
+  }
+
+  res.status(201).json(savedMemory.premiumMemories || []);
+});
+
+app.post('/api/premium/memories/:id/review', (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'ログインが必要です' });
+  }
+  if (!isPremiumUser(user)) {
+    return res.status(403).json({ error: 'プレミアム機能をご利用いただけません' });
+  }
+
+  const memoryId = String(req.params.id || '').trim();
+  const updatedUser = updateUserRecord(user.id, (record) => {
+    const memories = Array.isArray(record.premiumMemories) ? record.premiumMemories : [];
+    const target = memories.find((item) => item.id === memoryId);
+    if (!target) {
+      return record;
+    }
+    target.reviewCount = Math.max(0, Number(target.reviewCount) || 0) + 1;
+    target.lastReviewedAt = new Date().toISOString();
+    target.updatedAt = new Date().toISOString();
+    return record;
+  });
+
+  if (!updatedUser) {
+    return res.status(404).json({ error: 'メモが見つかりません' });
+  }
+
+  res.json(updatedUser.premiumMemories || []);
+});
+
+app.delete('/api/premium/memories/:id', (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'ログインが必要です' });
+  }
+  if (!isPremiumUser(user)) {
+    return res.status(403).json({ error: 'プレミアム機能をご利用いただけません' });
+  }
+
+  const memoryId = String(req.params.id || '').trim();
+  const updatedUser = updateUserRecord(user.id, (record) => {
+    const memories = Array.isArray(record.premiumMemories) ? record.premiumMemories : [];
+    record.premiumMemories = memories.filter((item) => item.id !== memoryId);
+    return record;
+  });
+
+  if (!updatedUser) {
+    return res.status(404).json({ error: 'メモが見つかりません' });
+  }
+
+  res.json(updatedUser.premiumMemories || []);
+});
+
+app.get('/api/admin/users', (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role !== 'admin') {
+    return res.status(403).json({ error: '管理者のみ閲覧できます' });
+  }
+  const users = normalizePasswordStorage(readJson(USERS_FILE, [])).map(normalizeUserRecord);
+  res.json(users.map((item) => ({
+    id: item.id,
+    name: item.name,
+    email: item.email,
+    role: item.role,
+    plan: item.plan || 'free',
+    premiumEnabled: isPremiumUser(item),
+    progress: item.progress || { attempted: 0, correct: 0, streak: 0, reviewQueue: [] },
+    premiumMemoryCount: Array.isArray(item.premiumMemories) ? item.premiumMemories.length : 0,
+  })));
+});
+
+app.patch('/api/admin/users/:id/plan', (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role !== 'admin') {
+    return res.status(403).json({ error: '管理者のみ変更できます' });
+  }
+
+  const targetPlan = String(req.body?.plan || '').trim().toLowerCase();
+  if (!['free', 'premium'].includes(targetPlan)) {
+    return res.status(400).json({ error: 'plan は free または premium を指定してください' });
+  }
+
+  const targetId = String(req.params.id || '').trim();
+  const updatedUser = updateUserRecord(targetId, (record) => {
+    record.plan = targetPlan;
+    if (!Array.isArray(record.premiumMemories)) {
+      record.premiumMemories = [];
+    }
+    return record;
+  });
+
+  if (!updatedUser) {
+    return res.status(404).json({ error: 'ユーザーが見つかりません' });
+  }
+
+  res.json({
+    id: updatedUser.id,
+    plan: updatedUser.plan || 'free',
+    premiumEnabled: isPremiumUser(updatedUser),
+  });
 });
 
 if (require.main === module) {

@@ -65,6 +65,13 @@ const feedbackNameInput = document.getElementById('feedbackName');
 const feedbackCommentInput = document.getElementById('feedbackComment');
 const feedbackSubmitStatus = document.getElementById('feedbackSubmitStatus');
 const feedbackList = document.getElementById('feedbackList');
+const premiumMemoryForm = document.getElementById('premiumMemoryForm');
+const premiumMemoryText = document.getElementById('premiumMemoryText');
+const premiumMemoryNote = document.getElementById('premiumMemoryNote');
+const premiumMemoryTarget = document.getElementById('premiumMemoryTarget');
+const premiumMemorySubmitBtn = document.getElementById('premiumMemorySubmitBtn');
+const premiumMemoryList = document.getElementById('premiumMemoryList');
+const premiumStatus = document.getElementById('premiumStatus');
 
 let koreanVoice = null;
 let koreanVoices = [];
@@ -184,8 +191,9 @@ function renderAuthProfile(user) {
     topProfileName.textContent = loggedIn ? (user.name || user.email || 'ユーザー') : 'ゲスト';
   }
   if (topProfileState) {
-    topProfileState.textContent = loggedIn ? 'ログイン中' : '未ログイン';
+    topProfileState.textContent = loggedIn ? (user.premiumEnabled ? 'プレミアム' : 'ログイン中') : '未ログイン';
     topProfileState.classList.toggle('is-offline', !loggedIn);
+    topProfileState.classList.toggle('is-premium', Boolean(loggedIn && user.premiumEnabled));
   }
   if (topProfileAvatar) {
     topProfileAvatar.src = loggedIn && user.avatarUrl ? user.avatarUrl : buildDefaultAvatarDataUrl(loggedIn ? user.name : 'G');
@@ -209,9 +217,11 @@ async function refreshAuthState() {
 
   if (authStatus) {
     authStatus.textContent = currentSessionUser
-      ? `${currentSessionUser.name || 'ユーザー'}としてログイン中です。`
+      ? `${currentSessionUser.name || 'ユーザー'}としてログイン中です。${currentSessionUser.premiumEnabled ? ' プレミアム保存が使えます。' : ' 無料プランです。'}`
       : '未ログインです。Googleログインで進捗を保存できます。';
   }
+
+  await loadPremiumMemories();
 }
 
 async function applyServerProgressIfAvailable() {
@@ -337,11 +347,11 @@ function buildLocalImageDataUrl(sceneText = '公園で人と犬が散歩して�
     '<ellipse cx="264" cy="172" rx="78" ry="40" fill="#ffffff" fill-opacity="0.5"/>',
     '<ellipse cx="770" cy="148" rx="88" ry="42" fill="#ffffff" fill-opacity="0.46"/>',
     `<rect x="0" y="498" width="1024" height="270" fill="${groundColor}" fill-opacity="0.82"/>`,
-    isPark ? '<circle cx="236" cy="430" r="50" fill="#22c55e" fill-opacity="0.82"/><rect x="228" y="468" width="16" height="96" rx="8" fill="#8b5a2b"/>' : '',
-    isCafe ? '<rect x="126" y="352" width="244" height="170" rx="22" fill="#fff7ed" stroke="#fdba74"/><rect x="182" y="394" width="110" height="60" rx="12" fill="#dbeafe"/><circle cx="206" cy="424" r="16" fill="#93c5fd"/><circle cx="268" cy="424" r="16" fill="#93c5fd"/>' : '',
-    isRain ? '<g opacity="0.72"><path d="M232 280l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M296 252l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M362 286l-16 30" stroke="#3b82f6" stroke-width="4"/></g><path d="M170 460c98-120 196-120 294 0" fill="#94a3b8" opacity="0.32"/>' : '',
-    isMeeting ? '<rect x="152" y="304" width="720" height="246" rx="28" fill="#ffffff" stroke="#cbd5e1"/><rect x="206" y="356" width="612" height="26" rx="13" fill="#e2e8f0"/><rect x="206" y="398" width="498" height="26" rx="13" fill="#cbd5e1"/>' : '',
-    isMarket ? '<rect x="112" y="362" width="800" height="124" rx="20" fill="#fff7ed" stroke="#fdba74"/><rect x="112" y="332" width="800" height="52" rx="18" fill="#fb7185" opacity="0.8"/>' : '',
+    isPark ? '<g><path d="M118 562c18-58 50-92 94-96 42-2 82 26 114 88" fill="none" stroke="#2f855a" stroke-width="10" stroke-linecap="round"/><rect x="120" y="366" width="154" height="96" rx="18" fill="#f59e0b"/><rect x="136" y="380" width="120" height="12" rx="6" fill="#fde68a"/><circle cx="224" cy="430" r="28" fill="#22c55e"/><rect x="216" y="454" width="16" height="98" rx="8" fill="#8b5a2b"/><circle cx="224" cy="396" r="54" fill="#16a34a" fill-opacity="0.86"/><rect x="360" y="352" width="170" height="106" rx="18" fill="#fbbf24"/><path d="M392 454l52-88 52 88" fill="#fb923c"/><rect x="422" y="454" width="44" height="82" rx="10" fill="#eab308"/><circle cx="720" cy="430" r="24" fill="#fda4af"/><circle cx="794" cy="430" r="22" fill="#93c5fd"/><circle cx="754" cy="468" r="20" fill="#fcd34d"/><path d="M710 486c16-18 30-26 46-26s30 8 46 26" fill="none" stroke="#334155" stroke-width="5" stroke-linecap="round"/></g>' : '',
+    isCafe ? '<g><rect x="114" y="340" width="284" height="188" rx="24" fill="#fff7ed" stroke="#fdba74"/><rect x="136" y="360" width="124" height="22" rx="11" fill="#fde68a"/><rect x="136" y="398" width="132" height="82" rx="16" fill="#dbeafe"/><rect x="284" y="384" width="86" height="96" rx="18" fill="#fee2e2"/><circle cx="172" cy="440" r="16" fill="#93c5fd"/><circle cx="214" cy="440" r="16" fill="#93c5fd"/><circle cx="316" cy="432" r="18" fill="#fda4af"/><rect x="430" y="386" width="146" height="76" rx="20" fill="#fde68a"/><circle cx="496" cy="424" r="18" fill="#22c55e"/><rect x="462" y="358" width="16" height="122" rx="8" fill="#92400e"/></g>' : '',
+    isRain ? '<g opacity="0.72"><path d="M232 280l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M296 252l-16 30" stroke="#3b82f6" stroke-width="4"/><path d="M362 286l-16 30" stroke="#3b82f6" stroke-width="4"/></g><path d="M170 460c98-120 196-120 294 0" fill="#94a3b8" opacity="0.32"/><circle cx="680" cy="456" r="24" fill="#fda4af"/><circle cx="760" cy="470" r="24" fill="#93c5fd"/><path d="M656 478c16-18 32-26 48-26s30 8 46 26" fill="none" stroke="#334155" stroke-width="5" stroke-linecap="round"/></g>' : '',
+    isMeeting ? '<rect x="152" y="304" width="720" height="246" rx="28" fill="#ffffff" stroke="#cbd5e1"/><rect x="206" y="356" width="612" height="26" rx="13" fill="#e2e8f0"/><rect x="206" y="398" width="498" height="26" rx="13" fill="#cbd5e1"/><circle cx="242" cy="480" r="26" fill="#93c5fd"/><circle cx="300" cy="478" r="22" fill="#fda4af"/><circle cx="726" cy="480" r="24" fill="#fde68a"/><rect x="452" y="428" width="120" height="78" rx="20" fill="#dbeafe"/><path d="M468 452h88" stroke="#475569" stroke-width="6" stroke-linecap="round"/><path d="M490 470h44" stroke="#475569" stroke-width="6" stroke-linecap="round"/></g>' : '',
+    isMarket ? '<rect x="112" y="362" width="800" height="124" rx="20" fill="#fff7ed" stroke="#fdba74"/><rect x="112" y="332" width="800" height="52" rx="18" fill="#fb7185" opacity="0.8"/><rect x="176" y="406" width="90" height="82" rx="10" fill="#fde68a"/><rect x="288" y="398" width="92" height="90" rx="10" fill="#bfdbfe"/><rect x="400" y="410" width="80" height="78" rx="10" fill="#fecaca"/><rect x="514" y="404" width="86" height="84" rx="10" fill="#bbf7d0"/><circle cx="664" cy="448" r="28" fill="#fda4af"/><circle cx="736" cy="446" r="26" fill="#93c5fd"/><circle cx="694" cy="472" r="22" fill="#fcd34d"/><circle cx="784" cy="472" r="20" fill="#86efac"/></g>' : '',
     '</svg>',
   ].join('');
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
@@ -509,6 +519,148 @@ async function loadFeedbackComments() {
     renderFeedbackList(Array.isArray(data) ? data : []);
   } catch (error) {
     feedbackList.innerHTML = '<li>コメントの読み込みに失敗しました。</li>';
+  }
+}
+
+function renderPremiumMemories(items) {
+  if (!premiumMemoryList) return;
+  if (!Array.isArray(items) || !items.length) {
+    premiumMemoryList.innerHTML = '<li>まだ保存された文章はありません。</li>';
+    return;
+  }
+
+  premiumMemoryList.innerHTML = '';
+  items.forEach((item) => {
+    const li = document.createElement('li');
+    const text = document.createElement('strong');
+    text.textContent = item.text || '';
+    const meta = document.createElement('span');
+    const note = item.note ? ` / ${item.note}` : '';
+    const reviewCount = Number(item.reviewCount) || 0;
+    const targetRepeats = Number(item.targetRepeats) || 3;
+    meta.textContent = `${note ? `${note}` : ''} 復習 ${reviewCount}/${targetRepeats}`.trim();
+
+    const actions = document.createElement('div');
+    actions.className = 'actions-row';
+
+    const reviewBtn = document.createElement('button');
+    reviewBtn.className = 'btn btn--secondary';
+    reviewBtn.type = 'button';
+    reviewBtn.dataset.action = 'review-premium-memory';
+    reviewBtn.dataset.id = item.id || '';
+    reviewBtn.textContent = '復習した';
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn btn--secondary';
+    deleteBtn.type = 'button';
+    deleteBtn.dataset.action = 'delete-premium-memory';
+    deleteBtn.dataset.id = item.id || '';
+    deleteBtn.textContent = '削除';
+
+    actions.append(reviewBtn, deleteBtn);
+    li.append(text, document.createElement('br'), meta, document.createElement('br'), actions);
+    premiumMemoryList.appendChild(li);
+  });
+}
+
+async function loadPremiumMemories() {
+  if (!premiumMemoryList || !premiumStatus) return;
+  if (!currentSessionUser) {
+    premiumStatus.textContent = 'ログインするとプレミアム保存を使えます。';
+    premiumMemoryList.innerHTML = '<li>ログインすると保存済みの文章が表示されます。</li>';
+    if (premiumMemoryForm) premiumMemoryForm.hidden = true;
+    return;
+  }
+
+  const premiumEnabled = Boolean(currentSessionUser.premiumEnabled || currentSessionUser.plan === 'premium');
+  if (premiumMemoryForm) premiumMemoryForm.hidden = !premiumEnabled;
+  if (!premiumEnabled) {
+    premiumStatus.textContent = '無料プランです。プレミアム保存は管理者の付与後に使えます。';
+    premiumMemoryList.innerHTML = '<li>プレミアムプランのユーザーだけが文章を保存できます。</li>';
+    return;
+  }
+
+  premiumStatus.textContent = 'プレミアム保存を読み込み中...';
+  try {
+    const response = await fetch('/api/premium/memories');
+    const memories = response.ok ? await response.json() : [];
+    renderPremiumMemories(Array.isArray(memories) ? memories : []);
+    premiumStatus.textContent = 'あなた専用の保存領域です。';
+  } catch (error) {
+    premiumStatus.textContent = '保存データの読み込みに失敗しました。';
+    premiumMemoryList.innerHTML = '<li>保存データを読み込めませんでした。</li>';
+  }
+}
+
+async function submitPremiumMemory(event) {
+  event.preventDefault();
+  if (!premiumMemoryForm || !premiumMemoryText || !premiumStatus) return;
+
+  const premiumEnabled = Boolean(currentSessionUser?.premiumEnabled || currentSessionUser?.plan === 'premium');
+  if (!currentSessionUser) {
+    premiumStatus.textContent = 'ログインしてください。';
+    return;
+  }
+  if (!premiumEnabled) {
+    premiumStatus.textContent = '無料プランでは保存できません。';
+    return;
+  }
+
+  const text = String(premiumMemoryText.value || '').trim();
+  const note = String(premiumMemoryNote?.value || '').trim();
+  const targetRepeats = Number(premiumMemoryTarget?.value) || 3;
+  if (!text) {
+    premiumStatus.textContent = '文章を入力してください。';
+    return;
+  }
+
+  if (premiumMemorySubmitBtn) premiumMemorySubmitBtn.disabled = true;
+  premiumStatus.textContent = '保存中...';
+  try {
+    const response = await fetch('/api/premium/memories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, note, targetRepeats }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      premiumStatus.textContent = data.error || '保存に失敗しました。';
+      return;
+    }
+
+    premiumMemoryForm.reset();
+    if (premiumMemoryTarget) premiumMemoryTarget.value = '3';
+    premiumStatus.textContent = '保存しました。くり返し復習できます。';
+    await loadPremiumMemories();
+  } catch (error) {
+    premiumStatus.textContent = '保存中にエラーが発生しました。';
+  } finally {
+    if (premiumMemorySubmitBtn) premiumMemorySubmitBtn.disabled = false;
+  }
+}
+
+async function handlePremiumMemoryAction(event) {
+  const button = event.target.closest('button[data-action]');
+  if (!button || !currentSessionUser) return;
+  const action = button.dataset.action;
+  const memoryId = button.dataset.id;
+  if (!memoryId) return;
+
+  const premiumEnabled = Boolean(currentSessionUser.premiumEnabled || currentSessionUser.plan === 'premium');
+  if (!premiumEnabled) return;
+
+  try {
+    if (action === 'review-premium-memory') {
+      await fetch(`/api/premium/memories/${encodeURIComponent(memoryId)}/review`, { method: 'POST' });
+      await loadPremiumMemories();
+      return;
+    }
+    if (action === 'delete-premium-memory') {
+      await fetch(`/api/premium/memories/${encodeURIComponent(memoryId)}`, { method: 'DELETE' });
+      await loadPremiumMemories();
+    }
+  } catch (error) {
+    if (premiumStatus) premiumStatus.textContent = '保存データの更新に失敗しました。';
   }
 }
 
@@ -1556,6 +1708,14 @@ if (feedbackForm) {
   feedbackForm.addEventListener('submit', submitFeedbackComment);
 }
 
+if (premiumMemoryForm) {
+  premiumMemoryForm.addEventListener('submit', submitPremiumMemory);
+}
+
+if (premiumMemoryList) {
+  premiumMemoryList.addEventListener('click', handlePremiumMemoryAction);
+}
+
 if (answerInput) {
   answerInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -1584,6 +1744,7 @@ if (topLogoutBtn) {
     if (authStatus) {
       authStatus.textContent = '未ログインです。Googleログインで進捗を保存できます。';
     }
+    await loadPremiumMemories();
   });
 }
 

@@ -37,6 +37,13 @@ ADMIN_PASSWORD=StrongAdminPassword123!
 
 - Regular user accounts are stored in data/users.json with hashed passwords. Do not store plain passwords in the repository or expose them in the UI.
 
+### Persistent user data
+
+- User progress, feedback comments, blog comments, and premium study memories are saved on the server in JSON files.
+- To keep these records after redeploys, set `DATA_DIR` to a persistent volume path on the host, for example `/var/data/korean-sakubun` on Render with a mounted disk.
+- If you want to grant premium access to specific demo accounts without billing, set `PREMIUM_ACCESS_EMAILS` to a comma-separated list of email addresses.
+- Premium users can save personal study texts and review them repeatedly from the homepage.
+
 ### Render deployment
 
 Recommended minimum configuration (reliable baseline):
@@ -76,6 +83,12 @@ ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=generate_a_long_random_password
 ADMIN_SECRET_PATH=/korean-admin-secret
 
+# Persistent storage for user data and sessions
+DATA_DIR=/var/data/korean-sakubun
+
+# Optional: grant premium access to selected accounts
+PREMIUM_ACCESS_EMAILS=vip@example.com,teacher@example.com
+
 # Optional: external TTS providers (choose one)
 GOOGLE_CLOUD_TTS_ACCESS_TOKEN=your_google_cloud_oauth_access_token
 # or
@@ -106,6 +119,8 @@ ADMIN_SECRET_PATH=/korean-admin-secret
 ```
 
 - Result: App still works with built-in fallback question bank/scoring.
+
+If you enable `DATA_DIR`, mount a persistent disk at the same path so comments, progress, premium memories, and sessions survive redeploys.
 
 Profile C: External TTS enabled
 

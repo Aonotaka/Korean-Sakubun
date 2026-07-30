@@ -21,6 +21,10 @@ services:
         generateValue: true
       - key: ADMIN_SECRET_PATH
         value: /korean-admin-secret
+      - key: DATA_DIR
+        value: /var/data/korean-sakubun
+      - key: PREMIUM_ACCESS_EMAILS
+        sync: false
       # Optional external TTS (choose one provider)
       - key: GOOGLE_CLOUD_TTS_ACCESS_TOKEN
         sync: false
