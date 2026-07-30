@@ -38,6 +38,12 @@
     <main>
       <section class="section">
         <div class="panel">
+          <h2>Googleでログイン</h2>
+          <p class="panel__hint">Googleアカウントの情報を使って、このサイトの学習アカウントを管理できます。</p>
+          <div id="googleSignInButton"></div>
+          <p id="googleAuthStatus" class="session-status"></p>
+        </div>
+        <div class="panel">
           <h2>アカウント作成</h2>
           <p class="panel__hint">強いパスワードとユーザーIDを設定できます。</p>
           <form id="registerForm" class="auth-form">
@@ -64,6 +70,7 @@
     <footer class="footer">
       <p>ひたすら韓国語作文</p>
     </footer>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="login.js"></script>
   </body>
 </html>
