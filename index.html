@@ -56,7 +56,7 @@
         <div class="topbar__links">
           <a href="#features">特徴</a>
           <a href="#practice">練習する</a>
-          <a href="/?mode=reply&level=beginner&autostart=1#practice">返信モード</a>
+          <a href="#practice">文法別作文</a>
           <a href="#progress">進捗</a>
           <a href="/what-is-korean-composition">韓国語作文とは</a>
           <a href="/learning-tips">学習のコツ</a>
@@ -94,13 +94,13 @@
           <p class="hero__one-liner">翻訳練習と会話返信練習を往復しながら、自然な韓国語の反応速度を育てます。</p>
           <div class="hero__actions">
             <a href="#practice" class="btn btn--primary">トレーニングを始める</a>
-            <a href="/?mode=reply&level=beginner&autostart=1#practice" class="btn btn--secondary">会話返信を始める</a>
+            <a href="#practice" class="btn btn--secondary">文法を選んで始める</a>
             <a href="/login?provider=google" class="btn btn--secondary">ログイン</a>
             <button id="shareBtn" class="btn btn--secondary" type="button">Xでシェア</button>
           </div>
           <ul class="hero__highlights">
             <li>初級〜上級まで対応</li>
-            <li>AIチャット返信モードを搭載</li>
+            <li>主要文法を網羅した文法別トレーニング</li>
             <li>模範解答と解説を確認</li>
             <li>分かち書きの注意も学べる</li>
           </ul>
@@ -177,8 +177,8 @@
                 <path d="M44 46H18a6 6 0 0 1-6-6v-8" />
               </svg>
             </div>
-            <h3>会話返信モード</h3>
-            <p>友達からのメッセージに返す形で、実際のチャットに近いテンポの韓国語を鍛えられます。</p>
+            <h3>文法別作文モード</h3>
+            <p>学習したい文法を選び、その文法を必ず使う作文を連続で練習できます。</p>
           </article>
           <article class="card">
             <div class="card__illustration card__illustration--review" aria-hidden="true">
@@ -198,9 +198,9 @@
 
       <section class="section section--soft">
         <div class="section__heading">
-          <p class="section__eyebrow">Two modes</p>
-          <h2>学び方に合わせて、練習モードを切り替え</h2>
-          <p>文を組み立てる力と、相手に反応する力は別です。両方を分けて練習できるようにしました。</p>
+          <p class="section__eyebrow">Grammar tracks</p>
+          <h2>主要文法を、目的別にピンポイント演習</h2>
+          <p>初級から中級までの必須文法を選び、同じ文法を使う作文問題を反復して定着させます。</p>
         </div>
         <div class="mode-grid">
           <article class="mode-card mode-card--translation">
@@ -223,23 +223,23 @@
             <ul class="mode-card__list">
               <li>チャット風UIで返信トレーニング</li>
               <li>常に採点・添削しながら会話継続</li>
-              <li>返信モードは長めセッションで定着</li>
+              <li>文法ごとの達成進捗を確認</li>
             </ul>
             <div class="mode-card__actions">
-              <a href="/?mode=reply&level=beginner&autostart=1#practice" class="btn btn--primary">このモードを始める</a>
+              <a href="#practice" class="btn btn--primary">このモードを始める</a>
             </div>
           </article>
           <article class="mode-card mode-card--image">
             <span class="mode-card__eyebrow">Mode 03</span>
-            <h3>画像を見て作文</h3>
-            <p>AIが生成した画像を見て、場面を韓国語で描写するモードです。描写文は毎回添削され、自然な言い換えも確認できます。</p>
+            <h3>重点文法の反復</h3>
+            <p>同じ文法を複数問題で繰り返し使い、使い分けと語尾変化を身体化する設計です。</p>
             <ul class="mode-card__list">
               <li>画像を見て韓国語で1〜2文を作成</li>
               <li>描写文の自然さをAIが採点・添削</li>
               <li>語彙と文の組み立てを同時に強化</li>
             </ul>
             <div class="mode-card__actions">
-              <a href="/?mode=image&level=beginner&autostart=1#practice" class="btn btn--secondary">このモードを始める</a>
+              <a href="#practice" class="btn btn--secondary">このモードを始める</a>
             </div>
           </article>
         </div>
@@ -258,8 +258,8 @@
           </article>
           <article class="flow-card">
             <span>02</span>
-            <h3>モードに合わせて回答</h3>
-            <p>翻訳問題を解くか、友達からのメッセージに返信するかを選び、韓国語で自然に表現します。</p>
+            <h3>文法を選んで回答</h3>
+            <p>学習したい文法を選び、その文法を必ず使う作文に集中して取り組みます。</p>
           </article>
           <article class="flow-card">
             <span>03</span>
@@ -283,11 +283,20 @@
           <label>
             練習モード
             <select id="practiceModeSelect">
-              <option value="translation">日本語→韓国語</option>
-              <option value="reply">友達メッセージ返信</option>
-              <option value="image">画像を見て作文</option>
+              <option value="grammar">文法別作文モード</option>
             </select>
           </label>
+          <div class="practice-note practice-note--obsolete">
+            <strong>Obsolete</strong>
+            <p>返信モード・画像作文モードは廃止され、文法別作文モードへ統合されました。</p>
+          </div>
+          <div class="grammar-picker">
+            <div class="panel__head">
+              <h3>文法選択</h3>
+              <p id="grammarSelectionStatus" class="panel__hint">文法を読み込み中...</p>
+            </div>
+            <div id="grammarCatalog" class="grammar-catalog" aria-live="polite"></div>
+          </div>
           <label>
             問題数
             <select id="questionCountSelect">
@@ -303,7 +312,7 @@
           <p id="ttsStatus" class="session-status">音声状態: ブラウザ韓国語音声 (無料)</p>
           <div class="practice-note">
             <strong>今の新機能</strong>
-            <p>返信モードでは、AIが会話の続きを返しながら毎ターン採点します。</p>
+            <p>指定文法を使う作文を連続出題し、文法使用チェック付きで採点します。</p>
           </div>
           <p class="panel__hint">ハングル入力モードに切り替えて入力するとスムーズです。</p>
           <p class="panel__hint">音声読み上げボタンは、回答後に使えます。</p>
@@ -313,6 +322,9 @@
           <div class="quiz__header">
             <span id="progressBadge" class="badge">0 / 0</span>
             <span id="levelBadge" class="badge badge--soft">初級</span>
+          </div>
+          <div id="targetGrammarBanner" class="target-grammar-banner" hidden>
+            今回のターゲット文法: <strong id="targetGrammarLabel">-</strong>
           </div>
 
           <div id="chatTranscript" class="chat-transcript" hidden></div>
@@ -417,15 +429,62 @@
         </div>
 
         <div class="panel">
-          <h2>プレミアム保存</h2>
-          <p>自分だけの文章を登録して、何度も見直せる保存領域です。</p>
+          <h2>プレミアム: マイ作文集</h2>
+          <p>自分だけの作文をストックし、検索・編集・復習サイクルで定着させます。</p>
           <p id="premiumStatus" class="session-status"></p>
+          <button id="premiumCheckoutBtn" class="btn btn--primary" type="button">有料プランに登録する (月額 480円)</button>
+          <div class="premium-toolbar" aria-label="作文集の検索と絞り込み">
+            <input id="premiumSearchInput" maxlength="80" placeholder="タイトル・本文・タグで検索" />
+            <select id="premiumFilterSelect">
+              <option value="all">すべて</option>
+              <option value="favorites">お気に入り</option>
+              <option value="due">復習期限が近い</option>
+              <option value="mistakes">誤答ログのみ</option>
+            </select>
+            <select id="premiumSortSelect">
+              <option value="created_desc">作成日順 (新しい)</option>
+              <option value="created_asc">作成日順 (古い)</option>
+              <option value="due_asc">復習期限順</option>
+              <option value="favorite_priority">お気に入り優先</option>
+            </select>
+          </div>
+          <div id="premiumStats" class="premium-stats" aria-live="polite">
+            <span>合計 0</span>
+            <span>お気に入り 0</span>
+            <span>復習候補 0</span>
+          </div>
+          <div id="premiumDashboard" class="premium-dashboard" aria-live="polite">
+            <article class="premium-kpi-card">
+              <p>今週の新規保存</p>
+              <strong id="premiumWeeklySaved">0</strong>
+            </article>
+            <article class="premium-kpi-card">
+              <p>今週の復習アクション</p>
+              <strong id="premiumWeeklyReviews">0</strong>
+            </article>
+            <article class="premium-kpi-card">
+              <p>今週の復習達成率</p>
+              <strong id="premiumWeeklyAchievement">0%</strong>
+            </article>
+          </div>
           <form id="premiumMemoryForm" class="feedback-form">
+            <input id="premiumMemoryTitle" maxlength="80" placeholder="タイトル (例: 週末の予定を説明する文)" />
             <textarea id="premiumMemoryText" rows="3" maxlength="280" placeholder="覚えたい韓国語や日本語の文" required></textarea>
-            <input id="premiumMemoryNote" maxlength="120" placeholder="メモ (任意)" />
+            <textarea id="premiumMemoryNote" rows="2" maxlength="220" placeholder="学習メモ (文法ポイント・ミス傾向など)" ></textarea>
+            <input id="premiumMemoryTags" maxlength="120" placeholder="タグ (例: 助詞, 日常会話, 敬語)" />
+            <label class="input-label" for="premiumMemoryTone">用途</label>
+            <select id="premiumMemoryTone">
+              <option value="free">自由</option>
+              <option value="daily">日常会話</option>
+              <option value="business">ビジネス</option>
+              <option value="exam">試験対策</option>
+            </select>
             <label class="input-label" for="premiumMemoryTarget">復習回数</label>
             <input id="premiumMemoryTarget" type="number" min="1" max="20" value="3" />
-            <button id="premiumMemorySubmitBtn" class="btn btn--primary" type="submit">プレミアムに保存</button>
+            <div class="actions-row">
+              <button id="premiumMemorySubmitBtn" class="btn btn--primary" type="submit">作文を追加する</button>
+              <button id="premiumMemoryCancelEditBtn" class="btn btn--secondary" type="button" hidden>編集をキャンセル</button>
+            </div>
           </form>
           <ul id="premiumMemoryList" class="review-list"></ul>
         </div>

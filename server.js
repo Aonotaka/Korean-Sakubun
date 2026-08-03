@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const Stripe = require('stripe');
 const { askAi, getProvider } = require('./services/ai');
 const { validateRegistrationInput } = require('./services/validation');
 
@@ -15,6 +16,13 @@ const POSTS_FILE = path.join(DATA_DIR, 'posts.json');
 const FEEDBACK_FILE = path.join(DATA_DIR, 'feedback.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const STRIPE_SECRET_KEY = String(process.env.STRIPE_SECRET_KEY || '').trim();
+const STRIPE_PRICE_ID = String(process.env.STRIPE_PRICE_ID || '').trim();
+const STRIPE_WEBHOOK_SECRET = String(process.env.STRIPE_WEBHOOK_SECRET || '').trim();
+const STRIPE_SUCCESS_URL = String(process.env.STRIPE_SUCCESS_URL || '').trim();
+const STRIPE_CANCEL_URL = String(process.env.STRIPE_CANCEL_URL || '').trim();
+const STRIPE_PAYMENT_LINK_URL = String(process.env.STRIPE_PAYMENT_LINK_URL || 'https://buy.stripe.com/14A4gyaqT6qi44IfMS6Zy00').trim();
+const stripeClient = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 const PREMIUM_ACCESS_EMAILS = new Set(
   String(process.env.PREMIUM_ACCESS_EMAILS || '')
     .split(',')
@@ -86,6 +94,53 @@ function normalizeProgress(progress) {
   };
 }
 
+function toDayKey(value) {
+  const date = new Date(value || Date.now());
+  if (Number.isNaN(date.getTime())) {
+    const now = new Date();
+    return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+  }
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+}
+
+function normalizePromptKey(text) {
+  return String(text || '').trim().replace(/\s+/g, ' ').slice(0, 140);
+}
+
+function parseLegacyPromptFromNote(note) {
+  const raw = String(note || '').trim();
+  if (!raw) return '';
+  const matched = raw.match(/お題:\s*(.+?)\s*\/\s*あなたの回答:/);
+  return matched ? String(matched[1] || '').trim() : '';
+}
+
+function parseLegacyGrammarLabel(memoryTitle, memoryTags) {
+  const title = String(memoryTitle || '').trim();
+  const fromTitle = title.match(/^\[誤答ログ\]\s*(.+)$/);
+  if (fromTitle && fromTitle[1]) {
+    return String(fromTitle[1]).trim();
+  }
+  const tags = Array.isArray(memoryTags) ? memoryTags : [];
+  const candidate = tags.map((tag) => String(tag).trim()).find((tag) => tag && tag !== '誤答ログ' && tag !== '文法別作文');
+  return candidate || 'legacy-grammar';
+}
+
+function inferLegacyMistakeSource(memory, normalizedTags, createdAt) {
+  const hasMistakeTag = normalizedTags.includes('誤答ログ');
+  if (!hasMistakeTag) {
+    return { sourceType: '', sourceKey: '', sourceDateKey: '' };
+  }
+
+  const prompt = parseLegacyPromptFromNote(memory.note);
+  const grammar = parseLegacyGrammarLabel(memory.title, normalizedTags);
+  const sourceKey = `${grammar}::${normalizePromptKey(prompt)}`.slice(0, 160);
+  return {
+    sourceType: 'grammar-mistake',
+    sourceKey,
+    sourceDateKey: toDayKey(createdAt),
+  };
+}
+
 function normalizePremiumMemory(memory) {
   if (!memory || typeof memory !== 'object') {
     return null;
@@ -96,22 +151,73 @@ function normalizePremiumMemory(memory) {
     return null;
   }
 
+  const tags = Array.isArray(memory.tags)
+    ? memory.tags
+    : String(memory.tags || '')
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+
+  const normalizedTags = tags
+    .map((tag) => String(tag).trim().slice(0, 24))
+    .filter(Boolean)
+    .slice(0, 8);
+
+  const tone = ['daily', 'business', 'exam', 'free'].includes(String(memory.tone || '').trim())
+    ? String(memory.tone || '').trim()
+    : 'free';
+
+  const reviewCount = Math.max(0, Number(memory.reviewCount) || 0);
+  const targetRepeats = Math.max(1, Math.min(20, Number(memory.targetRepeats) || 3));
+  const createdAt = String(memory.createdAt || new Date().toISOString());
+  const updatedAt = String(memory.updatedAt || new Date().toISOString());
+  const reviewHistory = Array.isArray(memory.reviewHistory)
+    ? memory.reviewHistory
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .slice(-120)
+    : [];
+  const achievedAt = String(memory.achievedAt || (reviewCount >= targetRepeats ? updatedAt : '')).trim();
+  const legacySource = inferLegacyMistakeSource(memory, normalizedTags, createdAt);
+  const sourceType = String(memory.sourceType || legacySource.sourceType || '').trim().slice(0, 32);
+  const sourceKey = String(memory.sourceKey || legacySource.sourceKey || '').trim().slice(0, 160);
+  const sourceDateKey = String(memory.sourceDateKey || legacySource.sourceDateKey || '').trim().slice(0, 16);
+
   return {
     id: String(memory.id || `memory-${Date.now()}`),
+    title: String(memory.title || '').trim().slice(0, 80),
     text: text.slice(0, 280),
-    note: String(memory.note || '').trim().slice(0, 120),
-    targetRepeats: Math.max(1, Math.min(20, Number(memory.targetRepeats) || 3)),
-    reviewCount: Math.max(0, Number(memory.reviewCount) || 0),
+    note: String(memory.note || '').trim().slice(0, 220),
+    tags: normalizedTags,
+    tone,
+    isFavorite: Boolean(memory.isFavorite),
+    targetRepeats,
+    reviewCount,
+    reviewHistory,
+    achievedAt,
+    sourceType,
+    sourceKey,
+    sourceDateKey,
+    nextReviewAt: String(memory.nextReviewAt || createdAt),
     lastReviewedAt: String(memory.lastReviewedAt || '').trim(),
-    createdAt: String(memory.createdAt || new Date().toISOString()),
-    updatedAt: String(memory.updatedAt || new Date().toISOString()),
+    createdAt,
+    updatedAt,
   };
+}
+
+function computeNextPremiumReviewAt(reviewCount = 0) {
+  const scheduleDays = [1, 3, 7, 14, 30, 45];
+  const index = Math.max(0, Math.min(scheduleDays.length - 1, Number(reviewCount) || 0));
+  const nextDate = new Date();
+  nextDate.setDate(nextDate.getDate() + scheduleDays[index]);
+  return nextDate.toISOString();
 }
 
 function normalizeUserRecord(user) {
   const normalized = { ...user };
   normalized.progress = normalizeProgress(normalized.progress);
-  normalized.plan = normalized.plan === 'premium' ? 'premium' : 'free';
+  normalized.is_premium = Boolean(normalized.is_premium || normalized.plan === 'premium');
+  normalized.plan = normalized.is_premium ? 'premium' : 'free';
   normalized.premiumMemories = Array.isArray(normalized.premiumMemories)
     ? normalized.premiumMemories.map(normalizePremiumMemory).filter(Boolean)
     : [];
@@ -121,6 +227,7 @@ function normalizeUserRecord(user) {
 function isPremiumUser(user) {
   if (!user) return false;
   if (user.role === 'admin') return true;
+  if (user.is_premium) return true;
   if (user.plan === 'premium') return true;
   const email = String(user.email || '').trim().toLowerCase();
   return PREMIUM_ACCESS_EMAILS.has(email);
@@ -328,6 +435,30 @@ function findUserById(userId) {
   return users.map(normalizeUserRecord).find((user) => user.id === userId) || null;
 }
 
+function findUserByStripeCustomerId(customerId) {
+  const normalizedCustomerId = String(customerId || '').trim();
+  if (!normalizedCustomerId) return null;
+  const users = normalizePasswordStorage(readJson(USERS_FILE, [])).map(normalizeUserRecord);
+  return users.find((user) => String(user.stripeCustomerId || '').trim() === normalizedCustomerId) || null;
+}
+
+function findUserByEmail(email) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) return null;
+  const users = normalizePasswordStorage(readJson(USERS_FILE, [])).map(normalizeUserRecord);
+  return users.find((user) => String(user.email || '').trim().toLowerCase() === normalizedEmail) || null;
+}
+
+function getBaseUrl(req) {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const protocol = forwardedProto || req.protocol || 'http';
+  const host = String(req.headers['x-forwarded-host'] || req.get('host') || '').split(',')[0].trim();
+  if (!host) {
+    return `http://localhost:${PORT}`;
+  }
+  return `${protocol}://${host}`;
+}
+
 function getSessionUser(req) {
   const cookies = parseCookies(req);
   const sessionId = cookies.sessionId;
@@ -418,6 +549,229 @@ const fallbackQuestionBank = {
     { prompt: '彼らは同じ目標に向かって努力してきた。', answer: '그들은 같은 목표를 향해 노력해 왔다.', hint: '-아/어 오다 は継続のニュアンスです。' },
   ],
 };
+
+const grammarMasterList = [
+  {
+    categoryId: 'beginner',
+    categoryName: '初級文法',
+    items: [
+      {
+        id: 'beg-copula-polite',
+        level: 'beginner',
+        category: '指定詞・基本語尾',
+        grammar: '~이에요/예요, ~입니다/입니까?',
+        meaning: '〜です / ですか',
+        hint: '名詞の後ろに -이에요/예요 を使います。',
+        sampleJapanese: '私は日本人です。',
+        sampleAnswer: '저는 일본 사람이에요.',
+        checkpoints: ['이에요', '예요', '입니다', '입니까'],
+      },
+      {
+        id: 'beg-negative',
+        level: 'beginner',
+        category: '否定表現',
+        grammar: '안 ~ / ~지 않다, 못 ~ / ~지 못하다',
+        meaning: '〜しない / 〜できない',
+        hint: '否定は 안 または -지 않다、不能は 못 または -지 못하다 を使います。',
+        sampleJapanese: '私は今日は運動しません。',
+        sampleAnswer: '저는 오늘 운동하지 않아요.',
+        checkpoints: ['안 ', '지 않', '못 ', '지 못'],
+      },
+      {
+        id: 'beg-past-future',
+        level: 'beginner',
+        category: '過去形・未来形',
+        grammar: '~았/었어요, ~을/ㄹ 거예요',
+        meaning: '〜しました / 〜するつもりです',
+        hint: '過去は -았/었어요、未来は -을/ㄹ 거예요 を使います。',
+        sampleJapanese: '昨日は図書館で勉強しました。',
+        sampleAnswer: '어제는 도서관에서 공부했어요.',
+        checkpoints: ['았어요', '었어요', '했어요', '거예요'],
+      },
+      {
+        id: 'beg-progress-state',
+        level: 'beginner',
+        category: '進行・状態',
+        grammar: '~고 있다, ~아/어 있다',
+        meaning: '〜している / 〜してある',
+        hint: '進行は -고 있다、状態は -아/어 있다 を使います。',
+        sampleJapanese: '今、友達を待っています。',
+        sampleAnswer: '지금 친구를 기다리고 있어요.',
+        checkpoints: ['고 있어', '아 있어', '어 있어'],
+      },
+      {
+        id: 'beg-desire-intent',
+        level: 'beginner',
+        category: '願望・意図',
+        grammar: '~고 싶다, ~을/ㄹ게요',
+        meaning: '〜したい / 〜しますね',
+        hint: '願望は -고 싶다、意図は -을/ㄹ게요 を使います。',
+        sampleJapanese: '韓国料理を食べたいです。',
+        sampleAnswer: '한국 음식을 먹고 싶어요.',
+        checkpoints: ['고 싶', 'ㄹ게요', '을게요'],
+      },
+      {
+        id: 'beg-suggestion-connector',
+        level: 'beginner',
+        category: '提案・勧誘',
+        grammar: '~을/ㄹ까요?, ~아/어서',
+        meaning: '〜しましょうか / 〜して・〜だから',
+        hint: '提案は -을/ㄹ까요?、接続は -아/어서 を使います。',
+        sampleJapanese: '一緒に映画を見に行きましょうか。',
+        sampleAnswer: '같이 영화 보러 갈까요?',
+        checkpoints: ['까요', '아서', '어서'],
+      },
+    ],
+  },
+  {
+    categoryId: 'intermediate',
+    categoryName: '中級文法',
+    items: [
+      {
+        id: 'int-reason-cause',
+        level: 'intermediate',
+        category: '理由・原因',
+        grammar: '~기 때문에, ~느라고',
+        meaning: '〜だから / 〜するせいで',
+        hint: '理由の説明は -기 때문에、原因強調は -느라고 を使います。',
+        sampleJapanese: '雨が降ったので遅れました。',
+        sampleAnswer: '비가 왔기 때문에 늦었어요.',
+        checkpoints: ['기 때문에', '느라고'],
+      },
+      {
+        id: 'int-condition',
+        level: 'intermediate',
+        category: '条件・仮定',
+        grammar: '~으면/면, ~아/어야',
+        meaning: '〜なら / 〜しなければ',
+        hint: '条件は -으면/면、必須条件は -아/어야 を使います。',
+        sampleJapanese: '時間があれば連絡してください。',
+        sampleAnswer: '시간이 있으면 연락해 주세요.',
+        checkpoints: ['으면', '면', '아야', '어야'],
+      },
+      {
+        id: 'int-contrast',
+        level: 'intermediate',
+        category: '逆説・コントラスト',
+        grammar: '~지만, ~ㄴ/는데',
+        meaning: '〜だけど / 〜のに・〜ですが',
+        hint: '逆接は -지만、背景説明や対比は -는데 を使います。',
+        sampleJapanese: '忙しいですが、手伝います。',
+        sampleAnswer: '바쁘지만 도와줄게요.',
+        checkpoints: ['지만', '는데', '은데'],
+      },
+      {
+        id: 'int-purpose',
+        level: 'intermediate',
+        category: '目的・手段',
+        grammar: '~으러/러, ~기 위해(서)',
+        meaning: '〜しに / 〜するために',
+        hint: '目的地への移動は -으러/러、一般目的は -기 위해(서) を使います。',
+        sampleJapanese: '韓国語を勉強するために韓国へ行きます。',
+        sampleAnswer: '한국어를 공부하기 위해 한국에 가요.',
+        checkpoints: ['으러', '러', '기 위해', '기 위해서'],
+      },
+      {
+        id: 'int-experience-ability',
+        level: 'intermediate',
+        category: '経験・能力',
+        grammar: '~ㄴ/은 적이 있다/없다, ~을/ㄹ 수 있다/없다',
+        meaning: '〜したことがある/ない, 〜できる/できない',
+        hint: '経験は -적이 있다/없다、能力は -을/ㄹ 수 있다/없다 を使います。',
+        sampleJapanese: '韓国に行ったことがあります。',
+        sampleAnswer: '한국에 간 적이 있어요.',
+        checkpoints: ['적이 있', '적이 없', '수 있', '수 없'],
+      },
+      {
+        id: 'int-guess-quote',
+        level: 'intermediate',
+        category: '推測・伝聞',
+        grammar: '~것 같다, ~다고 하다',
+        meaning: '〜のようだ / 〜だそうだ',
+        hint: '推測は -것 같다、伝聞は -다고 하다 を使います。',
+        sampleJapanese: '彼は今日来ないようです。',
+        sampleAnswer: '그는 오늘 안 올 것 같아요.',
+        checkpoints: ['것 같', '다고 하'],
+      },
+    ],
+  },
+  {
+    categoryId: 'upper-intermediate',
+    categoryName: '中上級文法',
+    items: [
+      {
+        id: 'up-change-result',
+        level: 'advanced',
+        category: '変化・結果',
+        grammar: '~게 되다',
+        meaning: '〜するようになる',
+        hint: '状態変化や結果を表すときは -게 되다 を使います。',
+        sampleJapanese: '毎日練習して、韓国語を自然に話せるようになりました。',
+        sampleAnswer: '매일 연습해서 한국어를 자연스럽게 말하게 되었어요.',
+        checkpoints: ['게 되'],
+      },
+      {
+        id: 'up-obligation-emphasis',
+        level: 'advanced',
+        category: '義務・強調',
+        grammar: '~아/어야 하다',
+        meaning: '〜しなければならない',
+        hint: '義務や必要性を強く示すときは -아/어야 하다 を使います。',
+        sampleJapanese: '明日までにこの報告書を提出しなければなりません。',
+        sampleAnswer: '내일까지 이 보고서를 제출해야 해요.',
+        checkpoints: ['해야', '아야', '어야'],
+      },
+      {
+        id: 'up-contrast-formal',
+        level: 'advanced',
+        category: '対比・転換',
+        grammar: '~는 반면(에)',
+        meaning: '〜である一方で',
+        hint: '二つの事実を対比するときは -는 반면(에) を使います。',
+        sampleJapanese: '兄は外向的な一方で、私は静かな性格です。',
+        sampleAnswer: '형은 외향적인 반면에 저는 조용한 성격이에요.',
+        checkpoints: ['반면'],
+      },
+      {
+        id: 'up-addition',
+        level: 'advanced',
+        category: '追加・並列',
+        grammar: '~(으)ㄹ 뿐만 아니라',
+        meaning: '〜だけでなく',
+        hint: '追加情報を重ねるときは -(으)ㄹ 뿐만 아니라 を使います。',
+        sampleJapanese: 'この本は面白いだけでなく、実用的でもあります。',
+        sampleAnswer: '이 책은 재미있을 뿐만 아니라 실용적이기도 해요.',
+        checkpoints: ['뿐만 아니라'],
+      },
+      {
+        id: 'up-proportional',
+        level: 'advanced',
+        category: '比例表現',
+        grammar: '~(으)ㄹ수록',
+        meaning: '〜すればするほど',
+        hint: '比例的な変化を表すときは -(으)ㄹ수록 を使います。',
+        sampleJapanese: '練習すればするほど自信がつきます。',
+        sampleAnswer: '연습할수록 자신감이 생겨요.',
+        checkpoints: ['수록'],
+      },
+      {
+        id: 'up-pretend',
+        level: 'advanced',
+        category: 'ふり・仮装',
+        grammar: '~(으)ㄴ/는 척하다',
+        meaning: '〜するふりをする',
+        hint: '実際とは違う行動を装うときは -(으)ㄴ/는 척하다 を使います。',
+        sampleJapanese: '彼は聞こえないふりをしました。',
+        sampleAnswer: '그는 못 들은 척했어요.',
+        checkpoints: ['척하'],
+      },
+    ],
+  },
+];
+
+const grammarMasterMap = new Map(
+  grammarMasterList.flatMap((category) => category.items.map((item) => [item.id, item])),
+);
 
 const fallbackReplyBank = {
   beginner: [
@@ -562,10 +916,33 @@ function getImageDifficultyProfile(level = 'beginner') {
 }
 
 function getPracticeMode(value) {
-  const normalized = String(value || 'translation').trim().toLowerCase();
+  const normalized = String(value || 'grammar').trim().toLowerCase();
+  if (normalized === 'grammar') return 'grammar';
   if (normalized === 'reply') return 'reply';
   if (normalized === 'image') return 'image';
   return 'translation';
+}
+
+function getGrammarById(grammarId) {
+  return grammarMasterMap.get(String(grammarId || '').trim()) || null;
+}
+
+function getFallbackGrammarQuestion(grammarId) {
+  const grammar = getGrammarById(grammarId) || grammarMasterList[0].items[0];
+  return {
+    japanese_question: grammar.sampleJapanese,
+    target_grammar: grammar.grammar,
+    model_answer: grammar.sampleAnswer,
+    hint: grammar.hint,
+    grammar_id: grammar.id,
+  };
+}
+
+function detectGrammarUsage(grammar, answerText) {
+  const answer = String(answerText || '');
+  const checkpoints = Array.isArray(grammar?.checkpoints) ? grammar.checkpoints : [];
+  if (!checkpoints.length) return true;
+  return checkpoints.some((marker) => answer.includes(marker));
 }
 
 function getFallbackQuestion(level = 'beginner') {
@@ -713,6 +1090,37 @@ function buildQuestionGenerationPrompts(level, style) {
   };
 }
 
+function buildGrammarGenerationPrompts(selectedGrammar, level = 'beginner') {
+  const grammarLabel = selectedGrammar?.grammar || '';
+  return {
+    systemPrompt: [
+      'あなたは韓国語の専門講師です。',
+      `ターゲット文法: ${grammarLabel}`,
+      '',
+      '【指示】',
+      '指定されたターゲット文法を自然に使う必要がある日本語のお題（作文問題）を1つ作成し、以下のJSONフォーマットで出力してください。',
+      '{',
+      '"japanese_question": "日本語のお題",',
+      '"target_grammar": "指定された文法",',
+      '"model_answer": "模範解答の韓国語",',
+      '"hint": "ヒント"',
+      '}',
+      '追加ルール:',
+      '- お題は日本語で作成すること。',
+      '- 模範解答は自然な韓国語1文〜2文で作成すること。',
+      '- hintは日本語で、ターゲット文法の使い方を短く説明すること。',
+      '- JSON以外を出力しないこと。',
+    ].join('\n'),
+    userPrompt: [
+      `学習者レベル: ${level}`,
+      `指定文法ID: ${selectedGrammar?.id || ''}`,
+      `指定文法: ${grammarLabel}`,
+      `意味: ${selectedGrammar?.meaning || ''}`,
+      '日本語のお題を1つだけ作ってください。',
+    ].join('\n'),
+  };
+}
+
 function buildReplyGenerationPrompts(level, previousFollowUp = '') {
   return {
     systemPrompt: [
@@ -807,6 +1215,34 @@ function buildScoringPrompts({ prompt, modelAnswer, userAnswer, level }) {
       `User answer: ${userAnswer}`,
       `Level: ${level}`,
       'Return JSON only.',
+    ].join('\n'),
+  };
+}
+
+function buildGrammarScoringPrompts({ prompt, modelAnswer, userAnswer, level, targetGrammar }) {
+  return {
+    systemPrompt: [
+      'あなたは韓国語作文の採点講師です。',
+      '学習者の回答を、公平かつ実用的に採点してください。',
+      '必須判定:',
+      '1) 意味が日本語お題に合っているか',
+      '2) 韓国語として自然か',
+      '3) 指定されたターゲット文法が正しく使われているか',
+      '出力は必ずJSONのみ。',
+      'フィールド:',
+      '{"status":"正解|惜しい|不正解","score":0-100,"feedback":"日本語","explanation":"日本語","correctedText":"韓国語","alternatives":["韓国語"],"grammarUsed":true/false,"grammarFeedback":"日本語"}',
+      '判定ルール:',
+      '- grammarUsed が false の場合は、status を 正解 にしないこと。',
+      '- grammarUsed が true で意味と文法が自然なら 正解 を優先すること。',
+      '- feedback と explanation と grammarFeedback は日本語で書くこと。',
+    ].join('\n'),
+    userPrompt: [
+      `レベル: ${level}`,
+      `ターゲット文法: ${targetGrammar}`,
+      `お題: ${prompt}`,
+      `模範解答: ${modelAnswer}`,
+      `学習者回答: ${userAnswer}`,
+      'JSONのみで返答してください。',
     ].join('\n'),
   };
 }
@@ -1119,6 +1555,103 @@ ensureSeedData();
 loadSessionsFromDisk();
 logStartupSummary();
 
+app.post('/api/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!stripeClient) {
+    return res.status(503).json({ error: 'Stripe is not configured' });
+  }
+
+  let event;
+  if (STRIPE_WEBHOOK_SECRET) {
+    try {
+      const signature = req.headers['stripe-signature'];
+      event = stripeClient.webhooks.constructEvent(req.body, signature, STRIPE_WEBHOOK_SECRET);
+    } catch (error) {
+      console.error('Stripe webhook signature verification failed:', error.message);
+      return res.status(400).json({ error: 'Invalid Stripe signature' });
+    }
+  } else {
+    try {
+      event = JSON.parse(req.body.toString('utf8'));
+    } catch (error) {
+      return res.status(400).json({ error: 'Invalid webhook payload' });
+    }
+  }
+
+  if (event.type === 'customer.subscription.created') {
+    const subscription = event.data?.object || {};
+    const userId = String(subscription.metadata?.userId || '').trim();
+    const customerId = String(subscription.customer || '').trim();
+    let targetUserId = userId;
+
+    if (!targetUserId && customerId) {
+      const foundUser = findUserByStripeCustomerId(customerId);
+      targetUserId = foundUser ? foundUser.id : '';
+    }
+
+    if (!targetUserId && customerId && stripeClient) {
+      try {
+        const customer = await stripeClient.customers.retrieve(customerId);
+        const customerEmail = String(customer?.email || '').trim().toLowerCase();
+        const foundUserByEmail = customerEmail ? findUserByEmail(customerEmail) : null;
+        targetUserId = foundUserByEmail ? foundUserByEmail.id : '';
+      } catch (error) {
+        console.warn('Stripe webhook: could not resolve customer email', error.message);
+      }
+    }
+
+    if (!targetUserId) {
+      console.warn('Stripe webhook: no matching user for subscription.created', subscription.id || '(no subscription id)');
+      return res.json({ received: true });
+    }
+
+    updateUserRecord(targetUserId, (record) => {
+      record.plan = 'premium';
+      record.is_premium = true;
+      if (customerId) record.stripeCustomerId = customerId;
+      record.stripeSubscriptionId = String(subscription.id || '').trim() || record.stripeSubscriptionId || '';
+      return record;
+    });
+  }
+
+  if (event.type === 'customer.subscription.deleted') {
+    const subscription = event.data?.object || {};
+    const userId = String(subscription.metadata?.userId || '').trim();
+    const customerId = String(subscription.customer || '').trim();
+    let targetUserId = userId;
+
+    if (!targetUserId && customerId) {
+      const foundUser = findUserByStripeCustomerId(customerId);
+      targetUserId = foundUser ? foundUser.id : '';
+    }
+
+    if (!targetUserId && customerId && stripeClient) {
+      try {
+        const customer = await stripeClient.customers.retrieve(customerId);
+        const customerEmail = String(customer?.email || '').trim().toLowerCase();
+        const foundUserByEmail = customerEmail ? findUserByEmail(customerEmail) : null;
+        targetUserId = foundUserByEmail ? foundUserByEmail.id : '';
+      } catch (error) {
+        console.warn('Stripe webhook: could not resolve customer email', error.message);
+      }
+    }
+
+    if (!targetUserId) {
+      console.warn('Stripe webhook: no matching user for subscription.deleted', subscription.id || '(no subscription id)');
+      return res.json({ received: true });
+    }
+
+    updateUserRecord(targetUserId, (record) => {
+      record.plan = 'free';
+      record.is_premium = false;
+      if (customerId) record.stripeCustomerId = customerId;
+      record.stripeSubscriptionId = '';
+      return record;
+    });
+  }
+
+  return res.json({ received: true });
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname)));
@@ -1186,6 +1719,7 @@ app.get('/api/auth/me', (req, res) => {
     avatarUrl: user.avatarUrl || '',
     authProvider: user.authProvider || 'password',
     plan: user.plan || 'free',
+    is_premium: isPremiumUser(user),
     premiumEnabled: isPremiumUser(user),
     premiumMemoryCount: Array.isArray(user.premiumMemories) ? user.premiumMemories.length : 0,
   });
@@ -1197,6 +1731,62 @@ app.get('/api/auth/google/config', (_req, res) => {
     enabled: Boolean(clientId),
     clientId,
   });
+});
+
+app.get('/api/grammar/list', (_req, res) => {
+  res.json(grammarMasterList);
+});
+
+app.post('/api/stripe/create-checkout-session', async (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'ログインが必要です' });
+  }
+  if (isPremiumUser(user)) {
+    return res.status(400).json({ error: 'すでにプレミアムプランです' });
+  }
+
+  // If a hosted Payment Link is configured, use it first.
+  if (STRIPE_PAYMENT_LINK_URL) {
+    const separator = STRIPE_PAYMENT_LINK_URL.includes('?') ? '&' : '?';
+    const prefilled = `${separator}prefilled_email=${encodeURIComponent(user.email)}&client_reference_id=${encodeURIComponent(user.id)}`;
+    return res.json({
+      url: `${STRIPE_PAYMENT_LINK_URL}${prefilled}`,
+      via: 'payment_link',
+    });
+  }
+
+  if (!stripeClient || !STRIPE_PRICE_ID) {
+    return res.status(503).json({ error: 'Stripe課金設定が未完了です' });
+  }
+
+  const baseUrl = getBaseUrl(req);
+  const successUrl = STRIPE_SUCCESS_URL || `${baseUrl}/?checkout=success`;
+  const cancelUrl = STRIPE_CANCEL_URL || `${baseUrl}/?checkout=cancel`;
+
+  try {
+    const session = await stripeClient.checkout.sessions.create({
+      mode: 'subscription',
+      line_items: [{ price: STRIPE_PRICE_ID, quantity: 1 }],
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      client_reference_id: user.id,
+      customer_email: user.email,
+      metadata: {
+        userId: user.id,
+      },
+      subscription_data: {
+        metadata: {
+          userId: user.id,
+        },
+      },
+    });
+
+    return res.json({ url: session.url, sessionId: session.id });
+  } catch (error) {
+    console.error('Failed to create Stripe checkout session:', error.message);
+    return res.status(500).json({ error: '決済ページの作成に失敗しました' });
+  }
 });
 
 app.post('/api/auth/register', (req, res) => {
@@ -1225,6 +1815,7 @@ app.post('/api/auth/login', (req, res) => {
     avatarUrl: user.avatarUrl || '',
     authProvider: user.authProvider || 'password',
     plan: user.plan || 'free',
+    is_premium: isPremiumUser(user),
     premiumEnabled: isPremiumUser(user),
   });
 });
@@ -1299,6 +1890,7 @@ app.post('/api/auth/google', async (req, res) => {
     avatarUrl: user.avatarUrl || '',
     authProvider: 'google',
     plan: user.plan || 'free',
+    is_premium: isPremiumUser(user),
     premiumEnabled: isPremiumUser(user),
   });
 });
@@ -1332,13 +1924,23 @@ app.post('/api/progress', (req, res) => {
 });
 
 app.post('/api/generate-question', async (req, res) => {
-  const { level = 'beginner', style = 'short', mode = 'translation', previousFollowUp = '' } = req.body;
+  const {
+    level = 'beginner',
+    style = 'short',
+    mode = 'grammar',
+    previousFollowUp = '',
+    grammarId = '',
+  } = req.body;
   const practiceMode = getPracticeMode(mode);
+  const selectedGrammar = getGrammarById(grammarId) || grammarMasterList[0].items[0];
   const provider = getProvider();
   const hasRequiredKey = Boolean(process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY);
 
   if (!hasRequiredKey) {
     console.warn('No AI API key found. Returning random built-in fallback question.');
+    if (practiceMode === 'grammar') {
+      return res.json({ mode: 'grammar', ...getFallbackGrammarQuestion(selectedGrammar.id) });
+    }
     if (practiceMode === 'reply') {
       return res.json(sanitizeReplyGenerationResult(null, getFallbackReplyPrompt(level, previousFollowUp)));
     }
@@ -1353,7 +1955,9 @@ app.post('/api/generate-question', async (req, res) => {
   }
 
   try {
-    const prompts = practiceMode === 'reply'
+    const prompts = practiceMode === 'grammar'
+      ? buildGrammarGenerationPrompts(selectedGrammar, level)
+      : practiceMode === 'reply'
       ? buildReplyGenerationPrompts(level, previousFollowUp)
       : practiceMode === 'image'
         ? buildImageGenerationPrompts(level)
@@ -1366,6 +1970,17 @@ app.post('/api/generate-question', async (req, res) => {
     });
 
     if (result) {
+      if (practiceMode === 'grammar') {
+        const fallback = getFallbackGrammarQuestion(selectedGrammar.id);
+        return res.json({
+          mode: 'grammar',
+          japanese_question: String(result?.japanese_question || fallback.japanese_question).trim(),
+          target_grammar: String(result?.target_grammar || selectedGrammar.grammar || fallback.target_grammar).trim(),
+          model_answer: String(result?.model_answer || fallback.model_answer).trim(),
+          hint: String(result?.hint || fallback.hint).trim(),
+          grammar_id: selectedGrammar.id,
+        });
+      }
       if (practiceMode === 'reply') {
         return res.json(sanitizeReplyGenerationResult(result, getFallbackReplyPrompt(level, previousFollowUp)));
       }
@@ -1384,6 +1999,9 @@ app.post('/api/generate-question', async (req, res) => {
       return res.json(sanitizeQuestionGenerationResult(result, getFallbackQuestion(level)));
     }
 
+    if (practiceMode === 'grammar') {
+      return res.json({ mode: 'grammar', ...getFallbackGrammarQuestion(selectedGrammar.id) });
+    }
     if (practiceMode === 'reply') {
       return res.json(sanitizeReplyGenerationResult(null, getFallbackReplyPrompt(level, previousFollowUp)));
     }
@@ -1402,13 +2020,41 @@ app.post('/api/generate-question', async (req, res) => {
 });
 
 app.post('/api/score-answer', async (req, res) => {
-  const { prompt, situation = '', modelAnswer, userAnswer, level = 'beginner', mode = 'translation' } = req.body;
+  const {
+    prompt,
+    situation = '',
+    modelAnswer,
+    userAnswer,
+    level = 'beginner',
+    mode = 'grammar',
+    targetGrammar = '',
+    grammarId = '',
+  } = req.body;
   const practiceMode = getPracticeMode(mode);
+  const selectedGrammar = getGrammarById(grammarId);
   const provider = getProvider();
   const hasRequiredKey = Boolean(process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY);
 
   if (!hasRequiredKey) {
     console.warn('No AI API key found. Returning built-in fallback scoring.');
+    if (practiceMode === 'grammar') {
+      const grammarSource = selectedGrammar?.grammar || String(targetGrammar || '').trim();
+      const grammarUsed = selectedGrammar
+        ? detectGrammarUsage(selectedGrammar, userAnswer)
+        : Boolean(String(userAnswer || '').trim());
+      return res.json({
+        status: grammarUsed ? '惜しい' : '不正解',
+        score: grammarUsed ? 76 : 52,
+        feedback: grammarUsed ? '文法は使えています。意味の自然さをもう一段整えましょう。' : '指定文法の使用が確認できませんでした。',
+        explanation: '語順・助詞・語尾を調整すると、より自然な作文になります。',
+        correctedText: modelAnswer,
+        alternatives: [modelAnswer],
+        grammarUsed,
+        grammarFeedback: grammarUsed
+          ? `指定文法(${grammarSource})は確認できました。`
+          : `指定文法(${grammarSource})を明示的に使ってみましょう。`,
+      });
+    }
     const fallbackFollowUp = practiceMode === 'reply' ? '친구: 고마워! 조금 있다가 다시 이야기하자.' : '';
     return res.json({
       status: '惜しい',
@@ -1422,7 +2068,9 @@ app.post('/api/score-answer', async (req, res) => {
   }
 
   try {
-    const prompts = practiceMode === 'reply'
+    const prompts = practiceMode === 'grammar'
+      ? buildGrammarScoringPrompts({ prompt, modelAnswer, userAnswer, level, targetGrammar })
+      : practiceMode === 'reply'
       ? buildReplyScoringPrompts({ prompt, situation, modelAnswer, userAnswer, level })
       : practiceMode === 'image'
         ? buildImageScoringPrompts({ prompt, situation, modelAnswer, userAnswer, level })
@@ -1435,6 +2083,21 @@ app.post('/api/score-answer', async (req, res) => {
     });
 
     if (result) {
+      if (practiceMode === 'grammar') {
+        const base = sanitizeScoringResult(result, modelAnswer);
+        const grammarUsed = typeof result?.grammarUsed === 'boolean'
+          ? result.grammarUsed
+          : (selectedGrammar ? detectGrammarUsage(selectedGrammar, userAnswer) : false);
+        const grammarFeedback = String(result?.grammarFeedback || '').trim()
+          || (grammarUsed
+            ? '指定文法の使用は確認できました。'
+            : '指定文法の使用が確認できませんでした。');
+        if (!grammarUsed && base.status === '正解') {
+          base.status = '惜しい';
+          base.score = Math.min(base.score, 84);
+        }
+        return res.json({ ...base, grammarUsed, grammarFeedback });
+      }
       if (practiceMode === 'reply') {
         const fallback = getFallbackReplyPrompt(level);
         return res.json({
@@ -1446,6 +2109,19 @@ app.post('/api/score-answer', async (req, res) => {
     }
 
     const fallbackReply = practiceMode === 'reply' ? getFallbackReplyPrompt(level) : null;
+    if (practiceMode === 'grammar') {
+      const grammarUsed = selectedGrammar ? detectGrammarUsage(selectedGrammar, userAnswer) : false;
+      return res.json({
+        status: grammarUsed ? '惜しい' : '不正解',
+        score: grammarUsed ? 74 : 50,
+        feedback: grammarUsed ? '文法は使えています。意味の自然さを調整しましょう。' : '指定文法を使う形に修正しましょう。',
+        explanation: '語彙よりも、まず指定文法の型を安定させると伸びます。',
+        correctedText: modelAnswer,
+        alternatives: [modelAnswer],
+        grammarUsed,
+        grammarFeedback: grammarUsed ? '指定文法の使用は確認できました。' : '指定文法の使用が確認できませんでした。',
+      });
+    }
     return res.json({
       status: '惜しい',
       score: 74,
@@ -1660,23 +2336,64 @@ app.post('/api/premium/memories', (req, res) => {
   }
 
   const text = String(req.body?.text || '').trim();
+  const title = String(req.body?.title || '').trim();
   const note = String(req.body?.note || '').trim();
+  const tone = String(req.body?.tone || 'free').trim();
+  const tags = Array.isArray(req.body?.tags) ? req.body.tags : String(req.body?.tags || '').split(',');
   const targetRepeats = Math.max(1, Math.min(20, Number(req.body?.targetRepeats) || 3));
+  const sourceType = String(req.body?.sourceType || '').trim();
+  const sourceKey = String(req.body?.sourceKey || '').trim();
+  const sourceDateKey = String(req.body?.sourceDateKey || '').trim();
   if (!text) {
     return res.status(400).json({ error: '保存する文章を入力してください' });
   }
 
   const savedMemory = updateUserRecord(user.id, (record) => {
     const memories = Array.isArray(record.premiumMemories) ? record.premiumMemories : [];
+    const nowIso = new Date().toISOString();
+
+    if (sourceType === 'grammar-mistake' && sourceKey && sourceDateKey) {
+      const duplicate = memories.find((item) => (
+        String(item.sourceType || '').trim() === 'grammar-mistake'
+        && String(item.sourceKey || '').trim() === sourceKey
+        && String(item.sourceDateKey || '').trim() === sourceDateKey
+      ));
+
+      if (duplicate) {
+        duplicate.title = title ? title.slice(0, 80) : duplicate.title;
+        duplicate.text = text.slice(0, 280);
+        duplicate.note = note ? note.slice(0, 220) : duplicate.note;
+        duplicate.tone = ['daily', 'business', 'exam', 'free'].includes(tone) ? tone : duplicate.tone;
+        duplicate.targetRepeats = targetRepeats;
+        const mergedTags = [...(Array.isArray(duplicate.tags) ? duplicate.tags : []), ...tags]
+          .map((tag) => String(tag).trim().slice(0, 24))
+          .filter(Boolean);
+        duplicate.tags = Array.from(new Set(mergedTags)).slice(0, 8);
+        duplicate.updatedAt = nowIso;
+        record.premiumMemories = memories.slice(0, 100);
+        return record;
+      }
+    }
+
     const newItem = normalizePremiumMemory({
       id: `memory-${Date.now()}`,
+      title,
       text,
       note,
+      tags,
+      tone,
+      isFavorite: false,
       targetRepeats,
       reviewCount: 0,
+      reviewHistory: [],
+      achievedAt: '',
+      sourceType,
+      sourceKey,
+      sourceDateKey,
+      nextReviewAt: computeNextPremiumReviewAt(0),
       lastReviewedAt: '',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: nowIso,
+      updatedAt: nowIso,
     });
     if (!newItem) {
       return record;
@@ -1691,6 +2408,70 @@ app.post('/api/premium/memories', (req, res) => {
   }
 
   res.status(201).json(savedMemory.premiumMemories || []);
+});
+
+app.patch('/api/premium/memories/:id', (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'ログインが必要です' });
+  }
+  if (!isPremiumUser(user)) {
+    return res.status(403).json({ error: 'プレミアム機能をご利用いただけません' });
+  }
+
+  const memoryId = String(req.params.id || '').trim();
+  if (typeof req.body?.text === 'string' && !String(req.body.text || '').trim()) {
+    return res.status(400).json({ error: '文章を入力してください' });
+  }
+  const updatedUser = updateUserRecord(user.id, (record) => {
+    const memories = Array.isArray(record.premiumMemories) ? record.premiumMemories : [];
+    const target = memories.find((item) => item.id === memoryId);
+    if (!target) {
+      return record;
+    }
+
+    if (typeof req.body?.title === 'string') {
+      target.title = String(req.body.title || '').trim().slice(0, 80);
+    }
+    if (typeof req.body?.text === 'string') {
+      const text = String(req.body.text || '').trim();
+      target.text = text.slice(0, 280);
+    }
+    if (typeof req.body?.note === 'string') {
+      target.note = String(req.body.note || '').trim().slice(0, 220);
+    }
+    if (typeof req.body?.tone === 'string') {
+      const tone = String(req.body.tone || '').trim();
+      target.tone = ['daily', 'business', 'exam', 'free'].includes(tone) ? tone : 'free';
+    }
+    if (typeof req.body?.targetRepeats !== 'undefined') {
+      target.targetRepeats = Math.max(1, Math.min(20, Number(req.body.targetRepeats) || target.targetRepeats || 3));
+      if ((Number(target.reviewCount) || 0) < target.targetRepeats) {
+        target.achievedAt = '';
+      } else if (!target.achievedAt) {
+        target.achievedAt = new Date().toISOString();
+      }
+    }
+    if (typeof req.body?.isFavorite === 'boolean') {
+      target.isFavorite = req.body.isFavorite;
+    }
+    if (typeof req.body?.tags !== 'undefined') {
+      const tags = Array.isArray(req.body.tags) ? req.body.tags : String(req.body.tags || '').split(',');
+      target.tags = tags
+        .map((tag) => String(tag).trim().slice(0, 24))
+        .filter(Boolean)
+        .slice(0, 8);
+    }
+
+    target.updatedAt = new Date().toISOString();
+    return record;
+  });
+
+  if (!updatedUser) {
+    return res.status(404).json({ error: 'メモが見つかりません' });
+  }
+
+  res.json(updatedUser.premiumMemories || []);
 });
 
 app.post('/api/premium/memories/:id/review', (req, res) => {
@@ -1710,8 +2491,16 @@ app.post('/api/premium/memories/:id/review', (req, res) => {
       return record;
     }
     target.reviewCount = Math.max(0, Number(target.reviewCount) || 0) + 1;
-    target.lastReviewedAt = new Date().toISOString();
-    target.updatedAt = new Date().toISOString();
+    const nowIso = new Date().toISOString();
+    const history = Array.isArray(target.reviewHistory) ? target.reviewHistory : [];
+    history.push(nowIso);
+    target.reviewHistory = history.slice(-120);
+    target.lastReviewedAt = nowIso;
+    if (target.reviewCount >= (Number(target.targetRepeats) || 3) && !target.achievedAt) {
+      target.achievedAt = nowIso;
+    }
+    target.nextReviewAt = computeNextPremiumReviewAt(target.reviewCount);
+    target.updatedAt = nowIso;
     return record;
   });
 
@@ -1777,6 +2566,7 @@ app.patch('/api/admin/users/:id/plan', (req, res) => {
   const targetId = String(req.params.id || '').trim();
   const updatedUser = updateUserRecord(targetId, (record) => {
     record.plan = targetPlan;
+    record.is_premium = targetPlan === 'premium';
     if (!Array.isArray(record.premiumMemories)) {
       record.premiumMemories = [];
     }

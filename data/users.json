@@ -12,7 +12,8 @@
       "reviewQueue": []
     },
     "plan": "free",
-    "premiumMemories": []
+    "premiumMemories": [],
+    "is_premium": false
   },
   {
     "id": "user-001",
@@ -27,7 +28,8 @@
       "reviewQueue": []
     },
     "plan": "free",
-    "premiumMemories": []
+    "premiumMemories": [],
+    "is_premium": false
   },
   {
     "id": "test-user",
@@ -42,7 +44,8 @@
       "reviewQueue": []
     },
     "plan": "free",
-    "premiumMemories": []
+    "premiumMemories": [],
+    "is_premium": false
   },
   {
     "id": "sample-user",
@@ -57,6 +60,7 @@
       "reviewQueue": []
     },
     "plan": "free",
-    "premiumMemories": []
+    "premiumMemories": [],
+    "is_premium": false
   }
 ]

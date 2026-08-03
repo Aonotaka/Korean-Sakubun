@@ -66,12 +66,28 @@ const feedbackCommentInput = document.getElementById('feedbackComment');
 const feedbackSubmitStatus = document.getElementById('feedbackSubmitStatus');
 const feedbackList = document.getElementById('feedbackList');
 const premiumMemoryForm = document.getElementById('premiumMemoryForm');
+const premiumMemoryTitle = document.getElementById('premiumMemoryTitle');
 const premiumMemoryText = document.getElementById('premiumMemoryText');
 const premiumMemoryNote = document.getElementById('premiumMemoryNote');
+const premiumMemoryTags = document.getElementById('premiumMemoryTags');
+const premiumMemoryTone = document.getElementById('premiumMemoryTone');
 const premiumMemoryTarget = document.getElementById('premiumMemoryTarget');
 const premiumMemorySubmitBtn = document.getElementById('premiumMemorySubmitBtn');
+const premiumMemoryCancelEditBtn = document.getElementById('premiumMemoryCancelEditBtn');
 const premiumMemoryList = document.getElementById('premiumMemoryList');
 const premiumStatus = document.getElementById('premiumStatus');
+const premiumCheckoutBtn = document.getElementById('premiumCheckoutBtn');
+const premiumSearchInput = document.getElementById('premiumSearchInput');
+const premiumFilterSelect = document.getElementById('premiumFilterSelect');
+const premiumSortSelect = document.getElementById('premiumSortSelect');
+const premiumStats = document.getElementById('premiumStats');
+const premiumWeeklySaved = document.getElementById('premiumWeeklySaved');
+const premiumWeeklyReviews = document.getElementById('premiumWeeklyReviews');
+const premiumWeeklyAchievement = document.getElementById('premiumWeeklyAchievement');
+const grammarCatalog = document.getElementById('grammarCatalog');
+const grammarSelectionStatus = document.getElementById('grammarSelectionStatus');
+const targetGrammarBanner = document.getElementById('targetGrammarBanner');
+const targetGrammarLabel = document.getElementById('targetGrammarLabel');
 
 let koreanVoice = null;
 let koreanVoices = [];
@@ -80,6 +96,10 @@ let ttsMode = 'browser';
 let currentCloudAudio = null;
 let externalTtsProvider = 'auto';
 let currentSessionUser = null;
+let premiumMemoriesCache = [];
+let premiumEditingId = '';
+let grammarMasterList = [];
+let selectedGrammarId = '';
 const ttsModeStorageKey = 'korean-sakubun-tts-mode';
 
 function buildBankFromSeed(seed, count) {
@@ -135,6 +155,45 @@ const questionBank = {
   advanced: buildBankFromSeed(advancedSeed, 200),
 };
 
+const fallbackGrammarMasterList = [
+  {
+    categoryId: 'beginner',
+    categoryName: '初級文法',
+    items: [
+      { id: 'beg-copula-polite', grammar: '~이에요/예요, ~입니다/입니까?', meaning: '〜です / ですか', level: 'beginner' },
+      { id: 'beg-negative', grammar: '안 ~ / ~지 않다, 못 ~ / ~지 못하다', meaning: '〜しない / 〜できない', level: 'beginner' },
+      { id: 'beg-past-future', grammar: '~았/었어요, ~을/ㄹ 거예요', meaning: '〜しました / 〜するつもりです', level: 'beginner' },
+      { id: 'beg-progress-state', grammar: '~고 있다, ~아/어 있다', meaning: '〜している / 〜してある', level: 'beginner' },
+      { id: 'beg-desire-intent', grammar: '~고 싶다, ~을/ㄹ게요', meaning: '〜したい / 〜しますね', level: 'beginner' },
+      { id: 'beg-suggestion-connector', grammar: '~을/ㄹ까요?, ~아/어서', meaning: '〜しましょうか / 〜して・〜だから', level: 'beginner' },
+    ],
+  },
+  {
+    categoryId: 'intermediate',
+    categoryName: '中級文法',
+    items: [
+      { id: 'int-reason-cause', grammar: '~기 때문에, ~느라고', meaning: '〜だから / 〜するせいで', level: 'intermediate' },
+      { id: 'int-condition', grammar: '~으면/면, ~아/어야', meaning: '〜なら / 〜しなければ', level: 'intermediate' },
+      { id: 'int-contrast', grammar: '~지만, ~ㄴ/는데', meaning: '〜だけど / 〜のに・〜ですが', level: 'intermediate' },
+      { id: 'int-purpose', grammar: '~으러/러, ~기 위해(서)', meaning: '〜しに / 〜するために', level: 'intermediate' },
+      { id: 'int-experience-ability', grammar: '~ㄴ/은 적이 있다/없다, ~을/ㄹ 수 있다/없다', meaning: '〜したことがある/ない, 〜できる/できない', level: 'intermediate' },
+      { id: 'int-guess-quote', grammar: '~것 같다, ~다고 하다', meaning: '〜のようだ / 〜だそうだ', level: 'intermediate' },
+    ],
+  },
+  {
+    categoryId: 'upper-intermediate',
+    categoryName: '中上級文法',
+    items: [
+      { id: 'up-change-result', grammar: '~게 되다', meaning: '〜するようになる', level: 'advanced' },
+      { id: 'up-obligation-emphasis', grammar: '~아/어야 하다', meaning: '〜しなければならない', level: 'advanced' },
+      { id: 'up-contrast-formal', grammar: '~는 반면(에)', meaning: '〜である一方で', level: 'advanced' },
+      { id: 'up-addition', grammar: '~(으)ㄹ 뿐만 아니라', meaning: '〜だけでなく', level: 'advanced' },
+      { id: 'up-proportional', grammar: '~(으)ㄹ수록', meaning: '〜すればするほど', level: 'advanced' },
+      { id: 'up-pretend', grammar: '~(으)ㄴ/는 척하다', meaning: '〜するふりをする', level: 'advanced' },
+    ],
+  },
+];
+
 let currentQuestions = [];
 let currentIndex = 0;
 let currentLevel = 'beginner';
@@ -147,6 +206,8 @@ let progressState = {
   correct: 0,
   streak: 0,
   reviewQueue: [],
+  grammarProgress: {},
+  selectedGrammarId: '',
   todaySolved: 0,
   todayCorrect: 0,
   todayKey: '',
@@ -308,26 +369,163 @@ async function initGoogleSignIn() {
   }
 }
 
-function getPracticeModeLabel(mode) {
-  if (mode === 'reply') return '友達メッセージ返信';
-  if (mode === 'image') return '画像を見て作文';
-  return '日本語→韓国語';
+function getPracticeModeLabel() {
+  return '文法別作文モード';
 }
 
 function getSelectedPracticeMode() {
-  const selected = String(practiceModeSelect?.value || 'translation');
-  if (selected === 'reply' || selected === 'image') {
-    return selected;
-  }
-  return 'translation';
+  return 'grammar';
 }
 
-function getSessionQuestionCount(requestedCount, mode) {
-  const baseCount = Number(requestedCount) || 5;
-  if (mode === 'reply') {
-    return Math.max(baseCount * 2, 8);
+function getSessionQuestionCount(requestedCount) {
+  return Math.max(1, Number(requestedCount) || 5);
+}
+
+function flattenGrammarItems(list) {
+  return (Array.isArray(list) ? list : []).flatMap((category) => (Array.isArray(category.items) ? category.items : []));
+}
+
+function findGrammarById(grammarId) {
+  const allItems = flattenGrammarItems(grammarMasterList.length ? grammarMasterList : fallbackGrammarMasterList);
+  return allItems.find((item) => item.id === grammarId) || null;
+}
+
+function getDefaultGrammar() {
+  const categories = grammarMasterList.length ? grammarMasterList : fallbackGrammarMasterList;
+  const firstCategory = categories[0];
+  return firstCategory?.items?.[0] || null;
+}
+
+function getSelectedGrammar() {
+  return findGrammarById(selectedGrammarId) || getDefaultGrammar();
+}
+
+function getGrammarProgressRecord(grammarId) {
+  const current = progressState.grammarProgress?.[grammarId] || {};
+  return {
+    solved: Number(current.solved) || 0,
+    correct: Number(current.correct) || 0,
+    achievedAt: String(current.achievedAt || '').trim(),
+  };
+}
+
+function getGrammarProgressLabel(grammarId) {
+  const record = getGrammarProgressRecord(grammarId);
+  const solved = Math.min(10, Math.max(0, record.solved));
+  return `${solved}/10`;
+}
+
+function isGrammarProgressAchieved(grammarId) {
+  const record = getGrammarProgressRecord(grammarId);
+  return record.solved >= 10;
+}
+
+function getGrammarAchievementLabel(grammarId) {
+  const record = getGrammarProgressRecord(grammarId);
+  if (record.solved < 10) return '';
+  const achievedAt = new Date(record.achievedAt || '');
+  if (Number.isNaN(achievedAt.getTime())) {
+    return '達成';
   }
-  return baseCount;
+  return `達成 ${achievedAt.getMonth() + 1}/${achievedAt.getDate()}`;
+}
+
+function getGrammarAchievementTitle(grammarId) {
+  const record = getGrammarProgressRecord(grammarId);
+  if (!record.achievedAt) return '';
+  return formatDateTime(record.achievedAt);
+}
+
+function updateTargetGrammarBanner() {
+  const selected = getSelectedGrammar();
+  if (!targetGrammarBanner || !targetGrammarLabel || !selected) return;
+  targetGrammarBanner.hidden = false;
+  targetGrammarLabel.textContent = `${selected.grammar}（${selected.meaning || ''}）`;
+}
+
+function renderGrammarCatalog() {
+  if (!grammarCatalog) return;
+  const categories = grammarMasterList.length ? grammarMasterList : fallbackGrammarMasterList;
+  if (!categories.length) {
+    grammarCatalog.innerHTML = '<p class="panel__hint">文法リストを読み込めませんでした。</p>';
+    return;
+  }
+
+  grammarCatalog.innerHTML = '';
+  categories.forEach((category, index) => {
+    const details = document.createElement('details');
+    details.className = 'grammar-category';
+    details.open = index === 0;
+
+    const summary = document.createElement('summary');
+    summary.textContent = category.categoryName;
+    details.appendChild(summary);
+
+    const grid = document.createElement('div');
+    grid.className = 'grammar-card-grid';
+
+    (category.items || []).forEach((item) => {
+      const achievementLabel = getGrammarAchievementLabel(item.id);
+      const achievementTitle = getGrammarAchievementTitle(item.id);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `grammar-card${item.id === selectedGrammarId ? ' is-selected' : ''}`;
+      button.dataset.grammarId = item.id;
+      button.innerHTML = `
+        <div class="grammar-card__title-row">
+          <div class="grammar-card__title">${item.grammar}</div>
+          ${achievementLabel ? `<span class="grammar-card__badge" title="${achievementTitle}">${achievementLabel}</span>` : ''}
+        </div>
+        <div class="grammar-card__meta"><span>${item.category || category.categoryName}</span><span>${item.meaning || ''}</span></div>
+        <div class="grammar-card__progress">進捗: ${getGrammarProgressLabel(item.id)}</div>
+      `;
+      grid.appendChild(button);
+    });
+
+    details.appendChild(grid);
+    grammarCatalog.appendChild(details);
+  });
+}
+
+function selectGrammar(grammarId, { silent = false } = {}) {
+  const target = findGrammarById(grammarId);
+  if (!target) return;
+  selectedGrammarId = target.id;
+  progressState.selectedGrammarId = target.id;
+  if (levelSelect) {
+    levelSelect.value = ['beginner', 'intermediate', 'advanced'].includes(target.level)
+      ? target.level
+      : 'beginner';
+  }
+  saveProgress();
+  renderGrammarCatalog();
+  updateTargetGrammarBanner();
+  if (!silent && grammarSelectionStatus) {
+    grammarSelectionStatus.textContent = `${target.grammar} を選択中`;
+  }
+}
+
+async function loadGrammarMasterList() {
+  try {
+    const response = await fetch('/api/grammar/list');
+    const data = response.ok ? await response.json() : [];
+    grammarMasterList = Array.isArray(data) && data.length ? data : fallbackGrammarMasterList;
+  } catch (error) {
+    grammarMasterList = fallbackGrammarMasterList;
+  }
+
+  const fallbackSelected = progressState.selectedGrammarId || selectedGrammarId;
+  const selected = findGrammarById(fallbackSelected) || getDefaultGrammar();
+  if (selected) {
+    selectedGrammarId = selected.id;
+    progressState.selectedGrammarId = selected.id;
+  }
+
+  renderGrammarCatalog();
+  updateTargetGrammarBanner();
+  if (grammarSelectionStatus && selected) {
+    grammarSelectionStatus.textContent = `${selected.grammar} を選択中`;
+  }
 }
 
 function buildLocalImageDataUrl(sceneText = '公園で人と犬が散歩しています。') {
@@ -415,61 +613,43 @@ function updateTtsStatus(message) {
 }
 
 function syncPracticeModeUi() {
-  const selectedMode = getSelectedPracticeMode();
-
   if (answerInput) {
-    answerInput.placeholder = selectedMode === 'reply'
-      ? '例: 오늘은 괜찮아. 어디서 만날까?'
-      : selectedMode === 'image'
-        ? '例: 공원에서 사람들이 산책하고 있어요.'
-        : '例: 내일 친구랑 영화를 보러 갈 거예요.';
+    answerInput.placeholder = '例: 한국에 가서 삼겹살을 먹고 싶어요.';
   }
 
   if (promptLabel && currentQuestions.length === 0) {
-    promptLabel.textContent = selectedMode === 'reply'
-      ? '友達のメッセージ'
-      : selectedMode === 'image'
-        ? '画像の場面'
-        : '日本語の文';
+    promptLabel.textContent = '日本語のお題';
   }
 
   if (practiceHints[0]) {
-    practiceHints[0].textContent = selectedMode === 'reply'
-      ? '返信モードでは、短くても相手に合うトーンで返すことを意識してください。'
-      : selectedMode === 'image'
-        ? '画像モードでは、見える情報を1〜2文で具体的に描写してください。'
-        : 'ハングル入力モードに切り替えて入力するとスムーズです。';
+    practiceHints[0].textContent = '文法の型を意識し、必ず指定文法を含めて作文してください。';
   }
 
   if (practiceHints[1]) {
-    practiceHints[1].textContent = selectedMode === 'reply'
-      ? '返信モードは長めセッションになり、毎ターン会話の続きと採点が返ります。'
-      : selectedMode === 'image'
-        ? '画像モードでも回答ごとに採点・添削が返ります。'
-        : '音声読み上げボタンは、回答後に使えます。';
+    practiceHints[1].textContent = '採点では「指定文法を正しく使えたか」が必ず評価されます。';
   }
 
   if (currentQuestions.length === 0 && promptText) {
-    promptText.textContent = selectedMode === 'reply'
-      ? '返信したいメッセージに備えて「セッション開始」を押してください。'
-      : selectedMode === 'image'
-        ? '画像作文を始めるには「セッション開始」を押してください。'
-        : 'レベルを選んで「セッション開始」を押してください。';
+    promptText.textContent = '文法を選んで「セッション開始」を押してください。';
   }
 }
 
 async function applyPracticeQueryParams() {
   const params = new URLSearchParams(window.location.search);
-  const mode = params.get('mode');
+  const grammarId = params.get('grammar');
   const level = params.get('level');
   const autostart = params.get('autostart');
 
-  if (practiceModeSelect && (mode === 'reply' || mode === 'translation' || mode === 'image')) {
-    practiceModeSelect.value = mode;
+  if (practiceModeSelect) {
+    practiceModeSelect.value = 'grammar';
   }
 
   if (levelSelect && ['beginner', 'intermediate', 'advanced'].includes(level)) {
     levelSelect.value = level;
+  }
+
+  if (grammarId) {
+    selectGrammar(grammarId, { silent: true });
   }
 
   syncPracticeModeUi();
@@ -486,6 +666,10 @@ async function applyPracticeQueryParams() {
 function formatDateTime(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('ja-JP');
+}
+
+function normalizePromptKey(text) {
+  return String(text || '').trim().replace(/\s+/g, ' ').slice(0, 140);
 }
 
 function renderFeedbackList(items) {
@@ -522,26 +706,205 @@ async function loadFeedbackComments() {
   }
 }
 
+function getPremiumToneLabel(tone) {
+  if (tone === 'daily') return '日常会話';
+  if (tone === 'business') return 'ビジネス';
+  if (tone === 'exam') return '試験対策';
+  return '自由';
+}
+
+function isPremiumMemoryDue(item) {
+  if (!item) return false;
+  const reviewCount = Number(item.reviewCount) || 0;
+  const targetRepeats = Number(item.targetRepeats) || 3;
+  const nextReview = new Date(String(item.nextReviewAt || ''));
+  const dueByCount = reviewCount < targetRepeats;
+  if (Number.isNaN(nextReview.getTime())) {
+    return dueByCount;
+  }
+  return nextReview.getTime() <= Date.now() || dueByCount;
+}
+
+function parsePremiumTagsInput(value) {
+  return String(value || '')
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function resetPremiumEditorState() {
+  premiumEditingId = '';
+  if (premiumMemoryForm) premiumMemoryForm.reset();
+  if (premiumMemoryTarget) premiumMemoryTarget.value = '3';
+  if (premiumMemoryTone) premiumMemoryTone.value = 'free';
+  if (premiumMemorySubmitBtn) premiumMemorySubmitBtn.textContent = '作文を追加する';
+  if (premiumMemoryCancelEditBtn) premiumMemoryCancelEditBtn.hidden = true;
+}
+
+function updatePremiumStats(items) {
+  if (!premiumStats) return;
+  const source = Array.isArray(items) ? items : [];
+  const favorites = source.filter((item) => Boolean(item.isFavorite)).length;
+  const dueCount = source.filter(isPremiumMemoryDue).length;
+  premiumStats.innerHTML = `<span>合計 ${source.length}</span><span>お気に入り ${favorites}</span><span>復習候補 ${dueCount}</span>`;
+}
+
+function resetPremiumDashboard() {
+  if (premiumWeeklySaved) premiumWeeklySaved.textContent = '0';
+  if (premiumWeeklyReviews) premiumWeeklyReviews.textContent = '0';
+  if (premiumWeeklyAchievement) premiumWeeklyAchievement.textContent = '0%';
+}
+
+function renderPremiumDashboard(items) {
+  const source = Array.isArray(items) ? items : [];
+  const weekMs = 7 * 24 * 60 * 60 * 1000;
+  const since = Date.now() - weekMs;
+
+  const weeklySaved = source.filter((item) => new Date(item.createdAt || 0).getTime() >= since).length;
+  const weeklyReviewActions = source.reduce((sum, item) => {
+    const history = Array.isArray(item.reviewHistory) ? item.reviewHistory : [];
+    const count = history.filter((stamp) => new Date(stamp || 0).getTime() >= since).length;
+    return sum + count;
+  }, 0);
+
+  const weeklyActiveCards = source.filter((item) => {
+    const createdRecently = new Date(item.createdAt || 0).getTime() >= since;
+    const reviewedRecently = Array.isArray(item.reviewHistory)
+      ? item.reviewHistory.some((stamp) => new Date(stamp || 0).getTime() >= since)
+      : false;
+    return createdRecently || reviewedRecently;
+  });
+  const weeklyAchievedCards = weeklyActiveCards.filter((item) => {
+    const achievedAt = new Date(item.achievedAt || 0).getTime();
+    return Number.isFinite(achievedAt) && achievedAt >= since;
+  }).length;
+
+  const achievementRate = weeklyActiveCards.length
+    ? Math.round((weeklyAchievedCards / weeklyActiveCards.length) * 100)
+    : 0;
+
+  if (premiumWeeklySaved) premiumWeeklySaved.textContent = String(weeklySaved);
+  if (premiumWeeklyReviews) premiumWeeklyReviews.textContent = String(weeklyReviewActions);
+  if (premiumWeeklyAchievement) premiumWeeklyAchievement.textContent = `${achievementRate}%`;
+}
+
+function getFilteredPremiumMemories(items) {
+  const source = Array.isArray(items) ? items : [];
+  const search = String(premiumSearchInput?.value || '').trim().toLowerCase();
+  const filter = String(premiumFilterSelect?.value || 'all').trim();
+
+  let filtered = source;
+  if (search) {
+    filtered = filtered.filter((item) => {
+      const haystack = [item.title, item.text, item.note, ...(Array.isArray(item.tags) ? item.tags : [])]
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(search);
+    });
+  }
+
+  if (filter === 'favorites') {
+    filtered = filtered.filter((item) => Boolean(item.isFavorite));
+  } else if (filter === 'due') {
+    filtered = filtered.filter(isPremiumMemoryDue);
+  } else if (filter === 'mistakes') {
+    filtered = filtered.filter((item) => {
+      if (String(item.sourceType || '').trim() === 'grammar-mistake') return true;
+      return Array.isArray(item.tags) && item.tags.some((tag) => String(tag).trim() === '誤答ログ');
+    });
+  }
+
+  return filtered;
+}
+
+function getSortedPremiumMemories(items) {
+  const source = Array.isArray(items) ? [...items] : [];
+  const sort = String(premiumSortSelect?.value || 'created_desc').trim();
+
+  if (sort === 'created_asc') {
+    return source.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+  }
+
+  if (sort === 'due_asc') {
+    return source.sort((a, b) => {
+      const aDue = new Date(a.nextReviewAt || 0).getTime() || Number.MAX_SAFE_INTEGER;
+      const bDue = new Date(b.nextReviewAt || 0).getTime() || Number.MAX_SAFE_INTEGER;
+      if (aDue !== bDue) return aDue - bDue;
+      return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
+    });
+  }
+
+  if (sort === 'favorite_priority') {
+    return source.sort((a, b) => {
+      const favDiff = Number(Boolean(b.isFavorite)) - Number(Boolean(a.isFavorite));
+      if (favDiff !== 0) return favDiff;
+      return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
+    });
+  }
+
+  return source.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+}
+
 function renderPremiumMemories(items) {
   if (!premiumMemoryList) return;
-  if (!Array.isArray(items) || !items.length) {
-    premiumMemoryList.innerHTML = '<li>まだ保存された文章はありません。</li>';
+  const source = Array.isArray(items) ? items : [];
+  updatePremiumStats(source);
+  renderPremiumDashboard(source);
+  const filtered = getFilteredPremiumMemories(source);
+  const sorted = getSortedPremiumMemories(filtered);
+
+  if (!sorted.length) {
+    premiumMemoryList.innerHTML = '<li>条件に合う作文がありません。検索条件を変更してください。</li>';
     return;
   }
 
   premiumMemoryList.innerHTML = '';
-  items.forEach((item) => {
+  sorted.forEach((item) => {
     const li = document.createElement('li');
-    const text = document.createElement('strong');
+    li.className = 'premium-memory-item';
+
+    const title = document.createElement('h4');
+    title.className = 'premium-memory-item__title';
+    title.textContent = item.title || '無題の作文';
+
+    const text = document.createElement('p');
+    text.className = 'premium-memory-item__text';
     text.textContent = item.text || '';
-    const meta = document.createElement('span');
-    const note = item.note ? ` / ${item.note}` : '';
+
+    const note = document.createElement('p');
+    note.className = 'premium-memory-item__note';
+    note.textContent = item.note ? `メモ: ${item.note}` : 'メモ: なし';
+
+    const chips = document.createElement('div');
+    chips.className = 'premium-memory-item__chips';
+
+    const toneChip = document.createElement('span');
+    toneChip.className = 'premium-chip';
+    toneChip.textContent = getPremiumToneLabel(item.tone);
+    chips.appendChild(toneChip);
+
+    (Array.isArray(item.tags) ? item.tags : []).forEach((tag) => {
+      const chip = document.createElement('span');
+      chip.className = 'premium-chip premium-chip--tag';
+      chip.textContent = `#${tag}`;
+      chips.appendChild(chip);
+    });
+
+    const progressWrap = document.createElement('div');
+    progressWrap.className = 'premium-progress';
     const reviewCount = Number(item.reviewCount) || 0;
     const targetRepeats = Number(item.targetRepeats) || 3;
-    meta.textContent = `${note ? `${note}` : ''} 復習 ${reviewCount}/${targetRepeats}`.trim();
+    const progressPercent = Math.max(0, Math.min(100, Math.round((reviewCount / targetRepeats) * 100)));
+    progressWrap.innerHTML = `<span>復習 ${reviewCount}/${targetRepeats}</span><div class="premium-progress__bar"><div style="width: ${progressPercent}%"></div></div>`;
+
+    const meta = document.createElement('p');
+    meta.className = 'premium-memory-item__meta';
+    const dueLabel = item.nextReviewAt ? formatDateTime(item.nextReviewAt) : '未設定';
+    meta.textContent = `次回復習: ${dueLabel} / 更新: ${formatDateTime(item.updatedAt)}`;
 
     const actions = document.createElement('div');
-    actions.className = 'actions-row';
+    actions.className = 'actions-row premium-memory-item__actions';
 
     const reviewBtn = document.createElement('button');
     reviewBtn.className = 'btn btn--secondary';
@@ -550,6 +913,20 @@ function renderPremiumMemories(items) {
     reviewBtn.dataset.id = item.id || '';
     reviewBtn.textContent = '復習した';
 
+    const favoriteBtn = document.createElement('button');
+    favoriteBtn.className = 'btn btn--secondary';
+    favoriteBtn.type = 'button';
+    favoriteBtn.dataset.action = 'favorite-premium-memory';
+    favoriteBtn.dataset.id = item.id || '';
+    favoriteBtn.textContent = item.isFavorite ? 'お気に入り解除' : 'お気に入り';
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn--secondary';
+    editBtn.type = 'button';
+    editBtn.dataset.action = 'edit-premium-memory';
+    editBtn.dataset.id = item.id || '';
+    editBtn.textContent = '編集';
+
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'btn btn--secondary';
     deleteBtn.type = 'button';
@@ -557,26 +934,73 @@ function renderPremiumMemories(items) {
     deleteBtn.dataset.id = item.id || '';
     deleteBtn.textContent = '削除';
 
-    actions.append(reviewBtn, deleteBtn);
-    li.append(text, document.createElement('br'), meta, document.createElement('br'), actions);
+    const duplicateBtn = document.createElement('button');
+    duplicateBtn.className = 'btn btn--secondary';
+    duplicateBtn.type = 'button';
+    duplicateBtn.dataset.action = 'duplicate-premium-memory';
+    duplicateBtn.dataset.id = item.id || '';
+    duplicateBtn.textContent = '複製';
+
+    actions.append(reviewBtn, favoriteBtn, editBtn, duplicateBtn, deleteBtn);
+    li.append(title, text, note, chips, progressWrap, meta, actions);
     premiumMemoryList.appendChild(li);
   });
+}
+
+function startPremiumMemoryEdit(memoryId) {
+  const target = premiumMemoriesCache.find((item) => item.id === memoryId);
+  if (!target || !premiumMemoryForm) return;
+
+  premiumEditingId = memoryId;
+  if (premiumMemoryTitle) premiumMemoryTitle.value = target.title || '';
+  if (premiumMemoryText) premiumMemoryText.value = target.text || '';
+  if (premiumMemoryNote) premiumMemoryNote.value = target.note || '';
+  if (premiumMemoryTags) premiumMemoryTags.value = Array.isArray(target.tags) ? target.tags.join(', ') : '';
+  if (premiumMemoryTone) premiumMemoryTone.value = target.tone || 'free';
+  if (premiumMemoryTarget) premiumMemoryTarget.value = String(Number(target.targetRepeats) || 3);
+  if (premiumMemorySubmitBtn) premiumMemorySubmitBtn.textContent = '編集内容を保存';
+  if (premiumMemoryCancelEditBtn) premiumMemoryCancelEditBtn.hidden = false;
+  premiumMemoryForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 async function loadPremiumMemories() {
   if (!premiumMemoryList || !premiumStatus) return;
   if (!currentSessionUser) {
+    resetPremiumEditorState();
     premiumStatus.textContent = 'ログインするとプレミアム保存を使えます。';
     premiumMemoryList.innerHTML = '<li>ログインすると保存済みの文章が表示されます。</li>';
+    premiumMemoriesCache = [];
+    updatePremiumStats([]);
+    resetPremiumDashboard();
     if (premiumMemoryForm) premiumMemoryForm.hidden = true;
+    if (premiumSearchInput) premiumSearchInput.disabled = true;
+    if (premiumFilterSelect) premiumFilterSelect.disabled = true;
+    if (premiumSortSelect) premiumSortSelect.disabled = true;
+    if (premiumCheckoutBtn) {
+      premiumCheckoutBtn.hidden = false;
+      premiumCheckoutBtn.disabled = false;
+      premiumCheckoutBtn.textContent = '有料プランに登録する (月額 480円)';
+    }
     return;
   }
 
   const premiumEnabled = Boolean(currentSessionUser.premiumEnabled || currentSessionUser.plan === 'premium');
   if (premiumMemoryForm) premiumMemoryForm.hidden = !premiumEnabled;
+  if (premiumSearchInput) premiumSearchInput.disabled = !premiumEnabled;
+  if (premiumFilterSelect) premiumFilterSelect.disabled = !premiumEnabled;
+  if (premiumSortSelect) premiumSortSelect.disabled = !premiumEnabled;
+  if (premiumCheckoutBtn) {
+    premiumCheckoutBtn.hidden = premiumEnabled;
+    premiumCheckoutBtn.disabled = false;
+    premiumCheckoutBtn.textContent = '有料プランに登録する (月額 480円)';
+  }
   if (!premiumEnabled) {
-    premiumStatus.textContent = '無料プランです。プレミアム保存は管理者の付与後に使えます。';
+    resetPremiumEditorState();
+    premiumStatus.textContent = '無料プランです。下のボタンから有料登録するとプレミアム保存を利用できます。';
     premiumMemoryList.innerHTML = '<li>プレミアムプランのユーザーだけが文章を保存できます。</li>';
+    premiumMemoriesCache = [];
+    updatePremiumStats([]);
+    resetPremiumDashboard();
     return;
   }
 
@@ -584,11 +1008,60 @@ async function loadPremiumMemories() {
   try {
     const response = await fetch('/api/premium/memories');
     const memories = response.ok ? await response.json() : [];
-    renderPremiumMemories(Array.isArray(memories) ? memories : []);
-    premiumStatus.textContent = 'あなた専用の保存領域です。';
+    premiumMemoriesCache = Array.isArray(memories)
+      ? [...memories]
+      : [];
+    renderPremiumMemories(premiumMemoriesCache);
+    premiumStatus.textContent = 'あなた専用の作文集です。追加・編集・復習で品質を高めましょう。';
   } catch (error) {
     premiumStatus.textContent = '保存データの読み込みに失敗しました。';
     premiumMemoryList.innerHTML = '<li>保存データを読み込めませんでした。</li>';
+    premiumMemoriesCache = [];
+    updatePremiumStats([]);
+    resetPremiumDashboard();
+  }
+}
+
+async function startPremiumCheckout() {
+  if (!premiumStatus) return;
+  if (!currentSessionUser) {
+    premiumStatus.textContent = '先にGoogleログインしてください。';
+    return;
+  }
+  if (currentSessionUser.premiumEnabled || currentSessionUser.plan === 'premium') {
+    premiumStatus.textContent = 'すでにプレミアムプランです。';
+    return;
+  }
+
+  if (premiumCheckoutBtn) {
+    premiumCheckoutBtn.disabled = true;
+    premiumCheckoutBtn.textContent = '決済ページを作成中...';
+  }
+  premiumStatus.textContent = '決済ページへ移動します...';
+
+  try {
+    const response = await fetch('/api/stripe/create-checkout-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.url) {
+      premiumStatus.textContent = data.error || '決済ページの作成に失敗しました。';
+      if (premiumCheckoutBtn) {
+        premiumCheckoutBtn.disabled = false;
+        premiumCheckoutBtn.textContent = '有料プランに登録する (月額 480円)';
+      }
+      return;
+    }
+
+    window.location.href = data.url;
+  } catch (error) {
+    premiumStatus.textContent = '決済ページへの移動中にエラーが発生しました。';
+    if (premiumCheckoutBtn) {
+      premiumCheckoutBtn.disabled = false;
+      premiumCheckoutBtn.textContent = '有料プランに登録する (月額 480円)';
+    }
   }
 }
 
@@ -606,8 +1079,11 @@ async function submitPremiumMemory(event) {
     return;
   }
 
+  const title = String(premiumMemoryTitle?.value || '').trim();
   const text = String(premiumMemoryText.value || '').trim();
   const note = String(premiumMemoryNote?.value || '').trim();
+  const tags = parsePremiumTagsInput(premiumMemoryTags?.value || '');
+  const tone = String(premiumMemoryTone?.value || 'free').trim();
   const targetRepeats = Number(premiumMemoryTarget?.value) || 3;
   if (!text) {
     premiumStatus.textContent = '文章を入力してください。';
@@ -617,10 +1093,14 @@ async function submitPremiumMemory(event) {
   if (premiumMemorySubmitBtn) premiumMemorySubmitBtn.disabled = true;
   premiumStatus.textContent = '保存中...';
   try {
-    const response = await fetch('/api/premium/memories', {
-      method: 'POST',
+    const isEditing = Boolean(premiumEditingId);
+    const endpoint = isEditing
+      ? `/api/premium/memories/${encodeURIComponent(premiumEditingId)}`
+      : '/api/premium/memories';
+    const response = await fetch(endpoint, {
+      method: isEditing ? 'PATCH' : 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, note, targetRepeats }),
+      body: JSON.stringify({ title, text, note, tags, tone, targetRepeats }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -628,9 +1108,10 @@ async function submitPremiumMemory(event) {
       return;
     }
 
-    premiumMemoryForm.reset();
-    if (premiumMemoryTarget) premiumMemoryTarget.value = '3';
-    premiumStatus.textContent = '保存しました。くり返し復習できます。';
+    resetPremiumEditorState();
+    premiumStatus.textContent = isEditing
+      ? '作文を更新しました。'
+      : '作文を保存しました。くり返し復習できます。';
     await loadPremiumMemories();
   } catch (error) {
     premiumStatus.textContent = '保存中にエラーが発生しました。';
@@ -655,8 +1136,52 @@ async function handlePremiumMemoryAction(event) {
       await loadPremiumMemories();
       return;
     }
+    if (action === 'favorite-premium-memory') {
+      const target = premiumMemoriesCache.find((item) => item.id === memoryId);
+      await fetch(`/api/premium/memories/${encodeURIComponent(memoryId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isFavorite: !Boolean(target?.isFavorite) }),
+      });
+      await loadPremiumMemories();
+      return;
+    }
+    if (action === 'edit-premium-memory') {
+      startPremiumMemoryEdit(memoryId);
+      return;
+    }
+    if (action === 'duplicate-premium-memory') {
+      const target = premiumMemoriesCache.find((item) => item.id === memoryId);
+      if (!target) return;
+      const copyTitle = target.title
+        ? `${target.title} (複製)`
+        : '複製した作文';
+      const response = await fetch('/api/premium/memories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: copyTitle.slice(0, 80),
+          text: target.text || '',
+          note: target.note || '',
+          tags: Array.isArray(target.tags) ? target.tags : [],
+          tone: target.tone || 'free',
+          targetRepeats: Number(target.targetRepeats) || 3,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        if (premiumStatus) premiumStatus.textContent = data.error || '複製に失敗しました。';
+        return;
+      }
+      if (premiumStatus) premiumStatus.textContent = '作文を複製しました。テンプレートとして編集できます。';
+      await loadPremiumMemories();
+      return;
+    }
     if (action === 'delete-premium-memory') {
       await fetch(`/api/premium/memories/${encodeURIComponent(memoryId)}`, { method: 'DELETE' });
+      if (premiumEditingId === memoryId) {
+        resetPremiumEditorState();
+      }
       await loadPremiumMemories();
     }
   } catch (error) {
@@ -782,6 +1307,7 @@ function ensureProgressShape() {
   progressState.dailyHistory = progressState.dailyHistory || {};
   progressState.practiceDayKeys = Array.isArray(progressState.practiceDayKeys) ? progressState.practiceDayKeys : [];
   progressState.weakTagCounts = progressState.weakTagCounts || {};
+  progressState.grammarProgress = progressState.grammarProgress || {};
 }
 
 function getLearningStreakDays() {
@@ -981,6 +1507,7 @@ function updateProgressUI() {
   renderReviewList();
   renderDailyChart();
   renderWeaknessTags();
+  renderGrammarCatalog();
 }
 
 async function syncProgressToServer() {
@@ -1074,12 +1601,17 @@ function addReviewItem(question, status) {
 
 async function startSession() {
   currentLevel = levelSelect.value;
-  currentPracticeMode = getSelectedPracticeMode();
-  const count = getSessionQuestionCount(questionCountSelect.value, currentPracticeMode);
+  currentPracticeMode = 'grammar';
+  const selectedGrammar = getSelectedGrammar();
+  if (!selectedGrammar) {
+    updateAiStatus('文法リストの読み込み後に開始してください。', false);
+    return;
+  }
+  const count = getSessionQuestionCount(questionCountSelect.value);
   sessionWrongQuestions = [];
   startBtn.disabled = true;
   startBtn.textContent = '生成中...';
-  updateAiStatus(`${getPracticeModeLabel(currentPracticeMode)}を生成しています...`, false);
+  updateAiStatus(`${selectedGrammar.grammar} の問題を生成しています...`, false);
   currentQuestions = [];
   currentIndex = 0;
   feedbackBox.hidden = true;
@@ -1092,29 +1624,22 @@ async function startSession() {
 
   try {
     const generated = [];
-    let previousFollowUp = '';
     for (let i = 0; i < count; i += 1) {
-      generated.push(await generateQuestion(previousFollowUp));
-      if (currentPracticeMode === 'reply') {
-        previousFollowUp = generated[generated.length - 1]?.followUp || previousFollowUp;
-      }
+      generated.push(await generateQuestion());
     }
     currentQuestions = generated;
-    updateAiStatus(`${getPracticeModeLabel(currentPracticeMode)}のトレーニングを始めます。`, true);
+    updateAiStatus(`${selectedGrammar.grammar} のトレーニングを始めます。`, true);
   } catch (error) {
-    if (currentPracticeMode === 'reply') {
-      currentQuestions = Array.from({ length: count }, () => ({
-        prompt: '友達からのメッセージ',
-        situation: '친구: 오늘 시간 있으면 커피 마실래?',
-        answer: '좋아요. 몇 시에 만날까요?',
-        hint: '誘いには、賛成 + 時間確認で返すと自然です。',
-        followUp: '친구: 3시쯤 어때?',
-        mode: 'reply',
-        source: 'fallback',
-      }));
-    } else {
-      currentQuestions = [...questionBank[currentLevel]].slice(0, count);
-    }
+    const fallback = getSelectedGrammar();
+    currentQuestions = Array.from({ length: count }, () => ({
+      prompt: fallback?.sampleJapanese || '週末に友達と韓国語で話したいです。',
+      answer: fallback?.sampleAnswer || '주말에 친구와 한국어로 이야기하고 싶어요.',
+      hint: fallback?.hint || '指定文法の型を含めて作文しましょう。',
+      mode: 'grammar',
+      targetGrammar: fallback?.grammar || '',
+      grammarId: fallback?.id || '',
+      source: 'fallback',
+    }));
     updateAiStatus('AI生成に失敗したため、サンプル問題で進めます。', false);
   }
 
@@ -1124,132 +1649,45 @@ async function startSession() {
 }
 
 function hasMismatchByKeyword(prompt, answer) {
-  const jp = String(prompt || '');
-  const ko = String(answer || '');
-
-  if (jp.includes('日本') && ko.includes('한국')) return true;
-  if (jp.includes('韓国') && ko.includes('일본')) return true;
-  if (jp.includes('来ました') && ko.includes('갔')) return true;
-  if (jp.includes('行きます') && ko.includes('왔')) return true;
-
-  return false;
-}
-
-async function generateQuestion(previousFollowUp = '') {
-  const maxImageRetries = currentPracticeMode === 'image' ? 2 : 0;
-  for (let attempt = 0; attempt <= maxImageRetries; attempt += 1) {
+  async function generateQuestion() {
+    const selectedGrammar = getSelectedGrammar();
     try {
       const response = await fetch('/api/generate-question', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ level: currentLevel, style: 'short', mode: currentPracticeMode, previousFollowUp }),
+        body: JSON.stringify({
+          level: currentLevel,
+          mode: 'grammar',
+          grammarId: selectedGrammar?.id || '',
+        }),
       });
-      const data = await response.json();
-      if (currentPracticeMode === 'reply') {
-        if (data && data.situation && data.answer) {
-          return {
-            prompt: data.prompt || '友達からのメッセージ',
-            situation: data.situation,
-            answer: data.answer,
-            hint: data.hint,
-            followUp: data.followUp || '',
-            mode: 'reply',
-            source: 'ai',
-          };
-        }
-      } else if (currentPracticeMode === 'image') {
-        if (data && data.prompt && data.answer && data.imageUrl && !isSvgDataUrl(data.imageUrl)) {
-          return {
-            prompt: data.prompt,
-            answer: data.answer,
-            hint: data.hint,
-            imageUrl: data.imageUrl,
-            scene: data.scene || '',
-            targetWords: data.targetWords || '',
-            vocabFocus: data.vocabFocus || '',
-            grammarFocus: data.grammarFocus || '',
-            sentenceGuide: data.sentenceGuide || '',
-            mode: 'image',
-            source: 'ai',
-          };
-        }
+      const data = await response.json().catch(() => ({}));
 
-        if (attempt < maxImageRetries) {
-          console.warn('Image generation returned a fallback image. Retrying with a new task.');
-          continue;
-        }
-      } else if (data && data.prompt && data.answer && !hasMismatchByKeyword(data.prompt, data.answer)) {
-        return { prompt: data.prompt, answer: data.answer, hint: data.hint, mode: 'translation', source: 'ai' };
+      if (response.ok && data && data.japanese_question && data.model_answer) {
+        return {
+          prompt: data.japanese_question,
+          answer: data.model_answer,
+          hint: data.hint || selectedGrammar?.meaning || '',
+          mode: 'grammar',
+          targetGrammar: data.target_grammar || selectedGrammar?.grammar || '',
+          grammarId: data.grammar_id || selectedGrammar?.id || '',
+          source: 'ai',
+        };
       }
-      console.warn('AI generated low-quality question pair. Falling back to built-in bank.');
-      break;
     } catch (error) {
       console.warn('AI generation failed', error);
-      break;
     }
-  }
 
-  if (currentPracticeMode === 'reply') {
-    const fallbackReply = {
-      prompt: '友達からのメッセージ',
-      situation: '친구: 오늘 시간 있으면 커피 마실래?',
-      answer: '좋아요. 몇 시에 만날까요?',
-      hint: '誘いには、賛成 + 時間確認で返すと自然です。',
-      followUp: '친구: 3시쯤 어때?',
-      mode: 'reply',
+    return {
+      prompt: selectedGrammar?.sampleJapanese || '韓国に行って韓国語をもっと上手に話したいです。',
+      answer: selectedGrammar?.sampleAnswer || '한국에 가서 한국어를 더 잘 말하고 싶어요.',
+      hint: selectedGrammar?.hint || '指定文法の型を使って作文してください。',
+      mode: 'grammar',
+      targetGrammar: selectedGrammar?.grammar || '',
+      grammarId: selectedGrammar?.id || '',
       source: 'fallback',
     };
-    return fallbackReply;
   }
-
-  if (currentPracticeMode === 'image') {
-    const imageFallbackByLevel = {
-      beginner: [
-        {
-          prompt: '画像を見て、韓国語で1文中心の描写を書いてください。',
-          scene: '公園で人と犬が散歩している午後の風景',
-          answer: '공원에서 사람들이 강아지와 함께 산책하고 있어요.',
-          hint: '場所(공원에서)と動作(-고 있어요)を入れると自然です。',
-          targetWords: '6-12語',
-          vocabFocus: '基本名詞・基本動詞',
-          grammarFocus: '-고 있어요, 은/는, 이/가',
-        },
-        {
-          prompt: '画像を見て、韓国語で1文中心の描写を書いてください。',
-          scene: 'カフェで二人がノートPCを見ながら話している場面',
-          answer: '카페에서 두 사람이 노트북을 보면서 이야기하고 있어요.',
-          hint: '同時動作は -면서 を使うと描写しやすいです。',
-          targetWords: '7-13語',
-          vocabFocus: '場所・人数・基本動詞',
-          grammarFocus: '-면서, -고 있어요',
-        },
-      ],
-      intermediate: [
-        {
-          prompt: '画像を見て、韓国語で1〜2文の描写を書いてください。',
-          scene: '雨の中で傘を差しながらバス停で待っている人たち',
-          answer: '비가 오는 날에 사람들이 우산을 쓰고 버스 정류장에서 기다리고 있어요.',
-          hint: '背景と場所を組み合わせると自然です。',
-          targetWords: '10-18語',
-          vocabFocus: '天気・移動・公共空間',
-          grammarFocus: '-는 날, -고, 에서',
-        },
-      ],
-      advanced: [
-        {
-          prompt: '画像を見て、韓国語で2文の描写を書いてください。',
-          scene: '会議室で資料を見ながら議論している複数のメンバー',
-          answer: '회의실에서 여러 구성원이 자료를 검토하며 진지하게 토론하고 있다.',
-          hint: '連結語尾(-며)を使うと描写が滑らかになります。',
-          targetWords: '14-26語',
-          vocabFocus: '抽象名詞・会議語彙・態度副詞',
-          grammarFocus: '-며, 관찰형 서술',
-        },
-      ],
-    };
-    const imageFallbacks = imageFallbackByLevel[currentLevel] || imageFallbackByLevel.beginner;
-    const pick = imageFallbacks[Math.floor(Math.random() * imageFallbacks.length)];
-    return {
       ...pick,
       imageUrl: buildLocalImageDataUrl(pick.scene),
       sentenceGuide: currentLevel === 'advanced' ? '2文推奨。対象を2つ以上書く。' : currentLevel === 'intermediate' ? '1〜2文で状況要素を2つ以上入れる。' : '1文中心で場所と動作を書く。',
@@ -1272,58 +1710,30 @@ function showQuestion() {
     return;
   }
 
-  const questionMode = question.mode || currentPracticeMode;
-  const isReplyMode = questionMode === 'reply';
-  const isImageMode = questionMode === 'image';
-
   if (scenarioText) {
-    scenarioText.hidden = !isReplyMode;
-    scenarioText.textContent = isReplyMode ? (question.prompt || '友達からのメッセージ') : '';
-    promptText.textContent = isReplyMode
-      ? (question.situation || '返信内容を韓国語で入力してください。')
-      : (question.prompt || '画像を見て韓国語で描写してください。');
-    if (chatTranscript) {
-      chatTranscript.hidden = !isReplyMode;
-    }
-  } else {
-    promptText.textContent = question.prompt;
+    scenarioText.hidden = true;
+    scenarioText.textContent = '';
   }
+  promptText.textContent = question.prompt || '日本語のお題を表示できませんでした。';
 
-  if (imagePromptBox && imagePromptImage && imagePromptCaption) {
-    imagePromptBox.hidden = !isImageMode;
-    if (isImageMode) {
-      const fallbackImage = buildLocalImageDataUrl(question.scene || '街の風景');
-      imagePromptImage.onerror = () => {
-        if (imagePromptImage.src !== fallbackImage) {
-          imagePromptImage.src = fallbackImage;
-        }
-      };
-      imagePromptImage.src = question.imageUrl || fallbackImage;
-      const lines = [];
-      if (question.scene) lines.push(`画像の場面: ${question.scene}`);
-      if (question.targetWords) lines.push(`目安語数: ${question.targetWords}`);
-      if (question.vocabFocus) lines.push(`語彙フォーカス: ${question.vocabFocus}`);
-      if (question.grammarFocus) lines.push(`文法フォーカス: ${question.grammarFocus}`);
-      if (question.sentenceGuide) lines.push(`文の目安: ${question.sentenceGuide}`);
-      imagePromptCaption.textContent = lines.length ? lines.join(' / ') : '画像の場面を韓国語で描写してください。';
-    }
+  if (imagePromptBox) imagePromptBox.hidden = true;
+  if (chatTranscript) {
+    chatTranscript.hidden = true;
+    chatTranscript.classList.remove('chat-transcript--reply');
   }
 
   if (promptLabel) {
-    promptLabel.textContent = isReplyMode ? '友達のメッセージ' : isImageMode ? '画像の場面' : '日本語の文';
+    promptLabel.textContent = '日本語のお題';
   }
   if (nextBtn) {
-    nextBtn.textContent = isReplyMode ? '次のメッセージへ' : isImageMode ? '次の画像へ' : '次の問題へ';
+    nextBtn.textContent = '次の問題へ';
   }
-  if (isReplyMode) {
-    if (replyTranscriptLastTurn !== currentIndex) {
-      appendChatBubble('friend', '友達', question.situation || question.prompt || 'メッセージ');
-      replyTranscriptLastTurn = currentIndex;
-    }
+
+  if (targetGrammarBanner && targetGrammarLabel) {
+    targetGrammarBanner.hidden = false;
+    targetGrammarLabel.textContent = question.targetGrammar || getSelectedGrammar()?.grammar || '-';
   }
-  if (chatTranscript) {
-    chatTranscript.classList.toggle('chat-transcript--reply', isReplyMode);
-  }
+
   progressBadge.textContent = `${currentIndex + 1} / ${currentQuestions.length}`;
   levelBadge.textContent = getLevelLabel(currentLevel);
   hintBox.hidden = true;
@@ -1409,6 +1819,47 @@ function showHint() {
   hintBox.textContent = `ヒント: ${question.hint}`;
 }
 
+async function autoSaveGrammarMistakeLog(question, userAnswer, correctedText, status, grammarUsed, score) {
+  if (!currentSessionUser || status === '正解') return;
+  const premiumEnabled = Boolean(currentSessionUser.premiumEnabled || currentSessionUser.plan === 'premium');
+  if (!premiumEnabled) return;
+
+  const grammar = question.targetGrammar || getSelectedGrammar()?.grammar || '文法別作文';
+  const grammarKey = question.grammarId || selectedGrammarId || 'unknown-grammar';
+  const title = `[誤答ログ] ${grammar}`.slice(0, 80);
+  const userText = String(userAnswer || '').trim().replace(/\s+/g, ' ');
+  const modelText = String(correctedText || question.answer || '').trim().replace(/\s+/g, ' ');
+  const sourceKey = `${grammarKey}::${normalizePromptKey(question.prompt)}`.slice(0, 160);
+  const sourceDateKey = getTodayKey();
+  const noteLines = [
+    `お題: ${String(question.prompt || '').trim()}`,
+    `あなたの回答: ${userText || '（未入力）'}`,
+    `結果: ${status} / ${score}点`,
+    `文法使用: ${grammarUsed === false ? '未使用' : '使用'}`,
+  ];
+  const note = noteLines.join(' / ').slice(0, 220);
+
+  try {
+    await fetch('/api/premium/memories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title,
+        text: modelText.slice(0, 280),
+        note,
+        tags: ['誤答ログ', '文法別作文', grammar],
+        tone: 'exam',
+        targetRepeats: 4,
+        sourceType: 'grammar-mistake',
+        sourceKey,
+        sourceDateKey,
+      }),
+    });
+  } catch (error) {
+    console.warn('Failed to auto-save grammar mistake log', error);
+  }
+}
+
 async function evaluateAnswer() {
   const question = currentQuestions[currentIndex];
   if (!question) return;
@@ -1425,6 +1876,8 @@ async function evaluateAnswer() {
   let correctedText = question.answer;
   let alternativesList = [question.answer, '別解: もっと柔らかい表現も可能です'];
   let modelAnswerText = question.answer;
+  let grammarUsed = null;
+  let grammarFeedback = '';
 
   try {
     const response = await fetch('/api/score-answer', {
@@ -1436,7 +1889,9 @@ async function evaluateAnswer() {
         modelAnswer: question.answer,
         userAnswer,
         level: currentLevel,
-        mode: question.mode || currentPracticeMode,
+        mode: 'grammar',
+        targetGrammar: question.targetGrammar || '',
+        grammarId: question.grammarId || selectedGrammarId,
       }),
     });
 
@@ -1451,11 +1906,8 @@ async function evaluateAnswer() {
       explanation = data.explanation || explanation;
       correctedText = data.correctedText || correctedText;
       alternativesList = data.alternatives || alternativesList;
-      if (followUpBox) {
-        const replyFollowUp = data.followUp || question.followUp || '';
-        followUpBox.textContent = replyFollowUp ? `会話の続き: ${replyFollowUp}` : '';
-        followUpBox.hidden = !replyFollowUp;
-      }
+      grammarUsed = typeof data.grammarUsed === 'boolean' ? data.grammarUsed : null;
+      grammarFeedback = String(data.grammarFeedback || '').trim();
       modelAnswerText = correctedText;
     }
   } catch (error) {
@@ -1463,31 +1915,18 @@ async function evaluateAnswer() {
   }
 
   const similarity = similarityRatio(normalizedUser, normalizedExpected);
-  const resolvedMode = question.mode || currentPracticeMode;
-  const isReplyMode = resolvedMode === 'reply';
-  const isImageMode = resolvedMode === 'image';
-
-  if (!isReplyMode) {
-    if (normalizedUser === normalizedExpected || similarity >= 0.84) {
-      status = '正解';
-      score = Math.max(score, normalizedUser === normalizedExpected ? 100 : 90);
-      feedback = '自然な韓国語です。文法の選び方も良いです。';
-    } else if (similarity >= 0.7 || (
-      normalizedUser.includes('가') ||
-      normalizedUser.includes('어요') ||
-      normalizedUser.includes('니다') ||
-      normalizedUser.includes('해요') ||
-      normalizedUser.includes('합니다') ||
-      normalizedUser.includes('어요')
-    )) {
-      status = '惜しい';
-      score = Math.max(score, 72);
-      feedback = '意味は近いですが、語尾・分かち書き・助詞の選び方でさらに自然になります。';
-    }
-  } else if (normalizedUser === normalizedExpected) {
+  if (normalizedUser === normalizedExpected) {
     status = '正解';
     score = Math.max(score, 100);
-    feedback = '自然な返答です。';
+    feedback = '自然な韓国語です。';
+  } else if (similarity >= 0.7) {
+    status = status === '不正解' ? '惜しい' : status;
+    score = Math.max(score, 72);
+  }
+
+  if (grammarUsed === false && score >= 90) {
+    status = '惜しい';
+    score = 84;
   }
 
   statusClass = statusClassFromStatus(status);
@@ -1511,16 +1950,6 @@ async function evaluateAnswer() {
     alternativesList = ['別解: 似た意味の丁寧表現でも正解になります'];
   }
 
-  if (isReplyMode) {
-    const replyFollowUp = (followUpBox && followUpBox.textContent ? followUpBox.textContent.replace(/^会話の続き:\s*/, '') : '') || question.followUp || '';
-    appendChatBubble('user', 'あなた', userAnswer || '（未入力）');
-    appendChatBubble(
-      'assistant',
-      'AI添削',
-      `${status} / ${score}点\n${feedback}\n${correctedText ? `修正: ${correctedText}\n` : ''}${explanation}${replyFollowUp ? `\n次の発話: ${replyFollowUp}` : ''}`
-    );
-  }
-
   const structureAdvice = buildStructureAdvice(userAnswer, correctedText, question.hint);
   analyzeWeaknessTags(userAnswer, correctedText, status);
 
@@ -1541,28 +1970,38 @@ async function evaluateAnswer() {
     }
   }
   addReviewItem(question, status);
+  const grammarProgress = progressState.grammarProgress || {};
+  const grammarKey = question.grammarId || selectedGrammarId;
+  if (grammarKey) {
+    const current = grammarProgress[grammarKey] || { solved: 0, correct: 0, achievedAt: '' };
+    current.solved += 1;
+    if (status === '正解') current.correct += 1;
+    if (current.solved >= 10 && !current.achievedAt) {
+      current.achievedAt = new Date().toISOString();
+    }
+    grammarProgress[grammarKey] = current;
+    progressState.grammarProgress = grammarProgress;
+  }
+  await autoSaveGrammarMistakeLog(question, userAnswer, correctedText, status, grammarUsed, score);
   saveProgress();
   updateProgressUI();
+  renderGrammarCatalog();
 
   feedbackStatus.textContent = status;
   feedbackStatus.className = `feedback-status ${statusClass}`;
   feedbackText.textContent = `採点: ${score}点`;
-  modelAnswerBox.innerHTML = `<strong>${isReplyMode ? '模範返信' : isImageMode ? '模範描写' : '模範解答'}</strong><div>${modelAnswerText}</div>`;
-  feedbackExplanation.textContent = `${feedback}\n\n${structureAdvice}\n\n${explanation}\n\n修正案: ${correctedText}`;
+  modelAnswerBox.innerHTML = `<strong>模範解答</strong><div>${modelAnswerText}</div>`;
+  feedbackExplanation.textContent = `${feedback}\n\n文法チェック: ${grammarFeedback || (grammarUsed === false ? '指定文法の使用が確認できませんでした。' : '指定文法の使用は概ね確認できました。')}\n\n${structureAdvice}\n\n${explanation}\n\n修正案: ${correctedText}`;
   alternatives.innerHTML = '';
   alternativesList.forEach((item) => {
     const chip = document.createElement('span');
     chip.textContent = item;
     alternatives.appendChild(chip);
   });
-  if (isReplyMode) {
-    feedbackBox.hidden = true;
-    if (followUpBox) {
-      followUpBox.hidden = true;
-    }
-  } else {
-    feedbackBox.hidden = false;
+  if (followUpBox) {
+    followUpBox.hidden = true;
   }
+  feedbackBox.hidden = false;
 }
 
 function shareToX() {
@@ -1647,10 +2086,19 @@ function retryWrongQuestions() {
 function startReviewItem(index) {
   const item = progressState.reviewQueue[index];
   if (!item) return;
-  currentPracticeMode = 'translation';
-  currentQuestions = [{ prompt: item.prompt, answer: item.answer, hint: item.hint, source: 'review' }];
+  currentPracticeMode = 'grammar';
+  const selected = getSelectedGrammar();
+  currentQuestions = [{
+    prompt: item.prompt,
+    answer: item.answer,
+    hint: item.hint,
+    source: 'review',
+    mode: 'grammar',
+    targetGrammar: selected?.grammar || '',
+    grammarId: selected?.id || selectedGrammarId,
+  }];
   currentIndex = 0;
-  currentLevel = 'beginner';
+  currentLevel = selected?.level || 'beginner';
   showQuestion();
   updateAiStatus('復習候補を表示しました。', false);
 }
@@ -1716,6 +2164,43 @@ if (premiumMemoryList) {
   premiumMemoryList.addEventListener('click', handlePremiumMemoryAction);
 }
 
+if (premiumMemoryCancelEditBtn) {
+  premiumMemoryCancelEditBtn.addEventListener('click', () => {
+    resetPremiumEditorState();
+    if (premiumStatus) premiumStatus.textContent = '編集をキャンセルしました。';
+  });
+}
+
+if (premiumSearchInput) {
+  premiumSearchInput.addEventListener('input', () => {
+    renderPremiumMemories(premiumMemoriesCache);
+  });
+}
+
+if (premiumFilterSelect) {
+  premiumFilterSelect.addEventListener('change', () => {
+    renderPremiumMemories(premiumMemoriesCache);
+  });
+}
+
+if (premiumSortSelect) {
+  premiumSortSelect.addEventListener('change', () => {
+    renderPremiumMemories(premiumMemoriesCache);
+  });
+}
+
+if (grammarCatalog) {
+  grammarCatalog.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-grammar-id]');
+    if (!button) return;
+    selectGrammar(button.dataset.grammarId || '');
+  });
+}
+
+if (premiumCheckoutBtn) {
+  premiumCheckoutBtn.addEventListener('click', startPremiumCheckout);
+}
+
 if (answerInput) {
   answerInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -1765,10 +2250,13 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   if (practiceModeSelect) {
+    practiceModeSelect.value = 'grammar';
     practiceModeSelect.addEventListener('change', syncPracticeModeUi);
   }
 
   loadProgress();
+  selectedGrammarId = progressState.selectedGrammarId || selectedGrammarId;
+  loadGrammarMasterList();
   refreshAuthState().then(applyServerProgressIfAvailable);
   initGoogleSignIn();
   loadFeedbackComments();

@@ -44,6 +44,39 @@ ADMIN_PASSWORD=StrongAdminPassword123!
 - If you want to grant premium access to specific demo accounts without billing, set `PREMIUM_ACCESS_EMAILS` to a comma-separated list of email addresses.
 - Premium users can save personal study texts and review them repeatedly from the homepage.
 
+### Stripe subscription setup
+
+This app supports Stripe Checkout for monthly premium subscriptions.
+
+1. Create a Stripe product and recurring monthly price.
+2. Set these environment variables:
+
+```text
+STRIPE_SECRET_KEY=sk_test_xxx
+STRIPE_PRICE_ID=price_xxx
+STRIPE_WEBHOOK_SECRET=whsec_xxx
+STRIPE_PAYMENT_LINK_URL=https://buy.stripe.com/14A4gyaqT6qi44IfMS6Zy00
+STRIPE_SUCCESS_URL=https://your-domain.example/?checkout=success
+STRIPE_CANCEL_URL=https://your-domain.example/?checkout=cancel
+```
+
+If STRIPE_PAYMENT_LINK_URL is set, the premium button redirects to that hosted Stripe Payment Link.
+
+3. Configure Stripe webhook endpoint:
+
+```text
+POST /api/webhook/stripe
+```
+
+4. Subscribe these webhook events:
+
+```text
+customer.subscription.created
+customer.subscription.deleted
+```
+
+When subscription is created, the server updates the user to premium. When subscription is deleted, the user is returned to free.
+
 ### Render deployment
 
 Recommended minimum configuration (reliable baseline):
