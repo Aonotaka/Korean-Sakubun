@@ -10,7 +10,38 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const isRender = Boolean(process.env.RENDER);
 const DEFAULT_DATA_DIR = path.join(__dirname, 'data');
-const DATA_DIR = path.resolve(process.env.DATA_DIR || DEFAULT_DATA_DIR);
+const TEMP_DATA_DIR = path.join('/tmp', 'korean-sakubun');
+
+function isUsableDataDir(candidatePath) {
+  try {
+    fs.mkdirSync(candidatePath, { recursive: true });
+    fs.accessSync(candidatePath, fs.constants.R_OK | fs.constants.W_OK);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+function resolveDataDir() {
+  const configuredDataDir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : null;
+  const candidates = [configuredDataDir, DEFAULT_DATA_DIR, TEMP_DATA_DIR].filter(Boolean);
+  const attempted = [];
+
+  for (const candidate of candidates) {
+    if (attempted.includes(candidate)) continue;
+    attempted.push(candidate);
+    if (isUsableDataDir(candidate)) {
+      if (configuredDataDir && candidate !== configuredDataDir) {
+        console.warn(`Configured DATA_DIR is not writable: ${configuredDataDir}. Falling back to: ${candidate}`);
+      }
+      return candidate;
+    }
+  }
+
+  throw new Error(`No writable DATA_DIR found. Tried: ${attempted.join(', ')}`);
+}
+
+const DATA_DIR = resolveDataDir();
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const POSTS_FILE = path.join(DATA_DIR, 'posts.json');
 const FEEDBACK_FILE = path.join(DATA_DIR, 'feedback.json');
@@ -34,10 +65,6 @@ const sessions = new Map();
 const FEEDBACK_MAX_ITEMS = Math.max(0, Number(process.env.FEEDBACK_MAX_ITEMS) || 0);
 const USER_AUDIT_MAX_ITEMS = Math.max(0, Number(process.env.USER_AUDIT_MAX_ITEMS) || 0);
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
 if (process.env.NODE_ENV !== 'production') {
   try {
     require('dotenv').config();
@@ -55,6 +82,7 @@ function logStartupSummary() {
   console.log('=== Korean-Sakubun startup ===');
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Host mode: ${isRender ? 'Render' : 'local'}`);
+  console.log(`Resolved DATA_DIR: ${DATA_DIR}`);
   console.log(`AI provider: ${provider}`);
   console.log(`AI key configured: ${hasKey ? 'yes' : 'no'}`);
   console.log(`Admin account configured: ${adminConfigured ? 'yes' : 'no'}`);
