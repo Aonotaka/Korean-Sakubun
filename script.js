@@ -84,6 +84,8 @@ const premiumStats = document.getElementById('premiumStats');
 const premiumWeeklySaved = document.getElementById('premiumWeeklySaved');
 const premiumWeeklyReviews = document.getElementById('premiumWeeklyReviews');
 const premiumWeeklyAchievement = document.getElementById('premiumWeeklyAchievement');
+const levelSetting = document.getElementById('levelSetting');
+const grammarSetting = document.getElementById('grammarSetting');
 const grammarCatalog = document.getElementById('grammarCatalog');
 const grammarSelectionStatus = document.getElementById('grammarSelectionStatus');
 const targetGrammarBanner = document.getElementById('targetGrammarBanner');
@@ -632,6 +634,13 @@ function updateTtsStatus(message) {
 
 function syncPracticeModeUi() {
   const mode = getSelectedPracticeMode();
+
+  if (levelSetting) {
+    levelSetting.hidden = mode !== 'translation';
+  }
+  if (grammarSetting) {
+    grammarSetting.hidden = mode !== 'grammar';
+  }
 
   if (answerInput) {
     answerInput.placeholder = mode === 'grammar'
@@ -1645,9 +1654,11 @@ function isCurrentUserPremium() {
 }
 
 async function startSession() {
-  currentLevel = levelSelect.value;
   currentPracticeMode = getSelectedPracticeMode();
   const selectedGrammar = currentPracticeMode === 'grammar' ? getSelectedGrammar() : null;
+  currentLevel = currentPracticeMode === 'grammar'
+    ? (selectedGrammar?.level || levelSelect.value)
+    : levelSelect.value;
   if (currentPracticeMode === 'grammar' && !selectedGrammar) {
     updateAiStatus('文法リストの読み込み後に開始してください。', false);
     return;

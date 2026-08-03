@@ -200,7 +200,14 @@
       <section id="practice" class="section practice-section">
         <div class="panel panel--control">
           <h2>練習設定</h2>
-          <label>
+          <label id="practiceModeSetting">
+            練習モード
+            <select id="practiceModeSelect">
+              <option value="translation">日本語→韓国語モード</option>
+              <option value="grammar">文法別練習モード</option>
+            </select>
+          </label>
+          <label id="levelSetting">
             レベル
             <select id="levelSelect">
               <option value="beginner">初級</option>
@@ -208,14 +215,7 @@
               <option value="advanced">上級</option>
             </select>
           </label>
-          <label>
-            練習モード
-            <select id="practiceModeSelect">
-              <option value="translation">日本語→韓国語モード</option>
-              <option value="grammar">文法別練習モード</option>
-            </select>
-          </label>
-          <div class="grammar-picker">
+          <div id="grammarSetting" class="grammar-picker">
             <div class="panel__head">
               <h3>文法選択</h3>
               <p id="grammarSelectionStatus" class="panel__hint">文法を読み込み中...</p>

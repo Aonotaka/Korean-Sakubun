@@ -41,6 +41,8 @@ ADMIN_PASSWORD=StrongAdminPassword123!
 
 - User progress, feedback comments, blog comments, and premium study memories are saved on the server in JSON files.
 - To keep these records after redeploys, set `DATA_DIR` to a persistent volume path on the host, for example `/var/data/korean-sakubun` on Render with a mounted disk.
+- Public feedback comments from `みんなのコメント` are saved at `DATA_DIR/feedback.json` (example: `/var/data/korean-sakubun/feedback.json`).
+- Feedback retention is unlimited by default. If you need to cap records, set `FEEDBACK_MAX_ITEMS` to a positive number.
 - If you want to grant premium access to specific demo accounts without billing, set `PREMIUM_ACCESS_EMAILS` to a comma-separated list of email addresses.
 - Premium users can save personal study texts and review them repeatedly from the homepage.
 

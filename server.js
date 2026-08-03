@@ -30,6 +30,7 @@ const PREMIUM_ACCESS_EMAILS = new Set(
     .filter(Boolean),
 );
 const sessions = new Map();
+const FEEDBACK_MAX_ITEMS = Math.max(0, Number(process.env.FEEDBACK_MAX_ITEMS) || 0);
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -324,7 +325,11 @@ function readJson(filePath, fallback) {
 }
 
 function writeJson(filePath, data) {
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+  const dirPath = path.dirname(filePath);
+  const tempPath = path.join(dirPath, `${path.basename(filePath)}.tmp`);
+  const payload = JSON.stringify(data, null, 2);
+  fs.writeFileSync(tempPath, payload);
+  fs.renameSync(tempPath, filePath);
 }
 
 function ensureSeedData() {
@@ -2225,7 +2230,10 @@ app.post('/api/feedback', (req, res) => {
   };
 
   safeFeedback.unshift(newItem);
-  writeJson(FEEDBACK_FILE, safeFeedback.slice(0, 100));
+  const savedFeedback = FEEDBACK_MAX_ITEMS > 0
+    ? safeFeedback.slice(0, FEEDBACK_MAX_ITEMS)
+    : safeFeedback;
+  writeJson(FEEDBACK_FILE, savedFeedback);
   res.status(201).json(newItem);
 });
 
