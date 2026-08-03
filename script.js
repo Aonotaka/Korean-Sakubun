@@ -90,6 +90,9 @@ const grammarCatalog = document.getElementById('grammarCatalog');
 const grammarSelectionStatus = document.getElementById('grammarSelectionStatus');
 const targetGrammarBanner = document.getElementById('targetGrammarBanner');
 const targetGrammarLabel = document.getElementById('targetGrammarLabel');
+const practiceQuizPanel = document.querySelector('.panel--quiz');
+const saveToPremiumBtn = document.getElementById('saveToPremiumBtn');
+const saveToPremiumStatus = document.getElementById('saveToPremiumStatus');
 
 let koreanVoice = null;
 let koreanVoices = [];
@@ -201,6 +204,11 @@ let currentIndex = 0;
 let currentLevel = 'beginner';
 let currentPracticeMode = 'translation';
 let sessionWrongQuestions = [];
+let recentQuestionHistory = [];
+const recentQuestionSet = new Set();
+const MAX_RECENT_QUESTION_HISTORY = 240;
+let pendingSolvedMemoryPayload = null;
+let pendingSolvedMemorySaved = false;
 let replyTranscriptLastTurn = -1;
 let transcriptMessageCount = 0;
 let progressState = {
@@ -230,6 +238,181 @@ function updateAiStatus(message, ready = false) {
   sessionStatus.textContent = message;
   statusPill.textContent = ready ? 'AI接続: 利用可能' : 'AI接続: フォールバック';
   statusPill.className = `status-pill${ready ? ' is-ready' : ' is-offline'}`;
+}
+
+function isPremiumEnabledForUser(user) {
+  if (!user || typeof user !== 'object') return false;
+  return Boolean(user.role === 'admin' || user.premiumEnabled || user.plan === 'premium');
+}
+
+function setPracticeScreenReady(ready) {
+  if (!practiceQuizPanel) return;
+  practiceQuizPanel.hidden = !ready;
+}
+
+function showSaveToPremiumStatus(message = '') {
+  if (!saveToPremiumStatus) return;
+  saveToPremiumStatus.hidden = !message;
+  saveToPremiumStatus.textContent = message;
+}
+
+function setSaveToPremiumButtonVisible(visible) {
+  if (!saveToPremiumBtn) return;
+  saveToPremiumBtn.hidden = !visible;
+}
+
+function buildSolvedMemoryPayload({ question, userAnswer, correctedText, status, score }) {
+  const modeTag = currentPracticeMode === 'grammar' ? '文法別作文' : '翻訳作文';
+  const grammarTag = currentPracticeMode === 'grammar' ? (question?.targetGrammar || '') : '';
+  const prompt = String(question?.prompt || '').trim();
+  const model = String(correctedText || question?.answer || '').trim();
+  const learner = String(userAnswer || '').trim();
+  const titleBase = prompt ? prompt.slice(0, 34) : '練習問題';
+  return {
+    title: `[練習] ${titleBase}`.slice(0, 80),
+    text: model.slice(0, 280),
+    note: `お題: ${prompt} / あなたの回答: ${learner || '（未入力）'} / 結果: ${status} / ${score}点`.slice(0, 220),
+    tags: [modeTag, grammarTag, status].filter(Boolean),
+    tone: currentPracticeMode === 'grammar' ? 'exam' : 'daily',
+    targetRepeats: 5,
+    sourceType: 'practice-solved',
+    sourceKey: `${currentPracticeMode}::${normalizePromptKey(prompt)}`.slice(0, 160),
+    sourceDateKey: getTodayKey(),
+  };
+}
+
+async function saveSolvedAnswerToPremium() {
+  if (!currentSessionUser) {
+    showSaveToPremiumStatus('ログイン後に利用できます。');
+    return;
+  }
+  if (!isPremiumEnabledForUser(currentSessionUser)) {
+    showSaveToPremiumStatus('プレミアム会員限定機能です。');
+    return;
+  }
+  if (!pendingSolvedMemoryPayload) {
+    showSaveToPremiumStatus('保存対象の回答がありません。');
+    return;
+  }
+  if (pendingSolvedMemorySaved) {
+    showSaveToPremiumStatus('この問題はすでに作文集へ追加済みです。');
+    return;
+  }
+
+  if (saveToPremiumBtn) {
+    saveToPremiumBtn.disabled = true;
+    saveToPremiumBtn.textContent = '追加中...';
+  }
+  showSaveToPremiumStatus('マイ作文集に追加しています...');
+
+  try {
+    const response = await fetch('/api/premium/memories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pendingSolvedMemoryPayload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      showSaveToPremiumStatus(data.error || '作文集への追加に失敗しました。');
+      return;
+    }
+
+    pendingSolvedMemorySaved = true;
+    if (saveToPremiumBtn) {
+      saveToPremiumBtn.textContent = '追加済み';
+      saveToPremiumBtn.disabled = true;
+    }
+    showSaveToPremiumStatus('マイ作文集に追加しました。');
+  } catch (error) {
+    showSaveToPremiumStatus('通信エラーのため追加できませんでした。');
+  } finally {
+    if (saveToPremiumBtn && !pendingSolvedMemorySaved) {
+      saveToPremiumBtn.disabled = false;
+      saveToPremiumBtn.textContent = 'マイ作文集に追加';
+    }
+  }
+}
+
+function normalizeQuestionSignaturePart(text) {
+  return String(text || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function getQuestionSignature(question) {
+  const mode = String(question?.mode || currentPracticeMode || '').trim().toLowerCase();
+  const grammarId = String(question?.grammarId || '').trim().toLowerCase();
+  const prompt = normalizeQuestionSignaturePart(question?.prompt || '');
+  if (!prompt) return '';
+  return `${mode}::${grammarId}::${prompt}`;
+}
+
+function rememberQuestionSignature(signature) {
+  if (!signature || recentQuestionSet.has(signature)) return;
+  recentQuestionSet.add(signature);
+  recentQuestionHistory.push(signature);
+  if (recentQuestionHistory.length > MAX_RECENT_QUESTION_HISTORY) {
+    const removed = recentQuestionHistory.shift();
+    if (removed) {
+      recentQuestionSet.delete(removed);
+    }
+  }
+}
+
+function isDuplicateQuestion(question, usedInSession) {
+  const signature = getQuestionSignature(question);
+  if (!signature) return false;
+  return usedInSession.has(signature) || recentQuestionSet.has(signature);
+}
+
+function pickUniqueTranslationFallback(level, usedInSession) {
+  const pool = Array.isArray(questionBank[level]) ? questionBank[level] : questionBank.beginner;
+  const unused = pool.filter((item) => {
+    const signature = getQuestionSignature({ ...item, mode: 'translation', grammarId: '' });
+    return signature && !usedInSession.has(signature) && !recentQuestionSet.has(signature);
+  });
+
+  const selectedPool = unused.length ? unused : pool;
+  const fallback = selectedPool[Math.floor(Math.random() * selectedPool.length)] || questionBank.beginner[0];
+  return { ...fallback, mode: 'translation', source: 'fallback' };
+}
+
+function buildGrammarFallbackVariants(selectedGrammar) {
+  const grammar = selectedGrammar?.grammar || '指定文法';
+  const meaning = selectedGrammar?.meaning || '指定パターン';
+  const sampleJapanese = selectedGrammar?.sampleJapanese || '';
+  const sampleAnswer = selectedGrammar?.sampleAnswer || '한국어 공부를 꾸준히 하고 싶어요.';
+  const hint = selectedGrammar?.hint || `${grammar} の型を1回以上入れてください。`;
+
+  const prompts = [
+    sampleJapanese,
+    `${grammar} を使って「今日の学習計画」を韓国語1文で書いてください。`,
+    `${grammar} (${meaning}) を必ず入れて、週末の予定を韓国語で表現してください。`,
+    `${grammar} を使って、友だちに近況を伝える韓国語文を作ってください。`,
+    `${grammar} を使い、学校や仕事に関する短い韓国語文を1〜2文で作ってください。`,
+  ].map((text) => String(text || '').trim()).filter(Boolean);
+
+  return prompts.map((promptText) => ({
+    prompt: promptText,
+    answer: sampleAnswer,
+    hint,
+    mode: 'grammar',
+    targetGrammar: grammar,
+    grammarId: selectedGrammar?.id || '',
+    source: 'fallback',
+  }));
+}
+
+function pickUniqueGrammarFallback(selectedGrammar, usedInSession) {
+  const variants = buildGrammarFallbackVariants(selectedGrammar);
+  const unique = variants.find((item) => !isDuplicateQuestion(item, usedInSession));
+  return unique || variants[0] || {
+    prompt: '指定文法を使って韓国語文を作ってください。',
+    answer: '저는 한국어를 꾸준히 연습하고 있어요.',
+    hint: '指定文法を1回以上入れてください。',
+    mode: 'grammar',
+    targetGrammar: selectedGrammar?.grammar || '',
+    grammarId: selectedGrammar?.id || '',
+    source: 'fallback',
+  };
 }
 
 function buildDefaultAvatarDataUrl(name = 'User') {
@@ -280,7 +463,7 @@ async function refreshAuthState() {
 
   if (authStatus) {
     authStatus.textContent = currentSessionUser
-      ? `${currentSessionUser.name || 'ユーザー'}としてログイン中です。${currentSessionUser.premiumEnabled ? ' プレミアム保存が使えます。' : ' 無料プランです。'}`
+      ? `${currentSessionUser.name || 'ユーザー'}としてログイン中です。${isPremiumEnabledForUser(currentSessionUser) ? ' プレミアム保存が使えます。' : ' 無料プランです。'}`
       : '未ログインです。Googleログインで進捗を保存できます。';
   }
 
@@ -1033,7 +1216,7 @@ async function loadPremiumMemories() {
     return;
   }
 
-  const premiumEnabled = Boolean(currentSessionUser.premiumEnabled || currentSessionUser.plan === 'premium');
+  const premiumEnabled = isPremiumEnabledForUser(currentSessionUser);
   if (premiumMemoryForm) premiumMemoryForm.hidden = !premiumEnabled;
   if (premiumSearchInput) premiumSearchInput.disabled = !premiumEnabled;
   if (premiumFilterSelect) premiumFilterSelect.disabled = !premiumEnabled;
@@ -1077,7 +1260,7 @@ async function startPremiumCheckout() {
     premiumStatus.textContent = '先にGoogleログインしてください。';
     return;
   }
-  if (currentSessionUser.premiumEnabled || currentSessionUser.plan === 'premium') {
+  if (isPremiumEnabledForUser(currentSessionUser)) {
     premiumStatus.textContent = 'すでにプレミアムプランです。';
     return;
   }
@@ -1118,7 +1301,7 @@ async function submitPremiumMemory(event) {
   event.preventDefault();
   if (!premiumMemoryForm || !premiumMemoryText || !premiumStatus) return;
 
-  const premiumEnabled = Boolean(currentSessionUser?.premiumEnabled || currentSessionUser?.plan === 'premium');
+  const premiumEnabled = isPremiumEnabledForUser(currentSessionUser);
   if (!currentSessionUser) {
     premiumStatus.textContent = 'ログインしてください。';
     return;
@@ -1176,7 +1359,7 @@ async function handlePremiumMemoryAction(event) {
   const memoryId = button.dataset.id;
   if (!memoryId) return;
 
-  const premiumEnabled = Boolean(currentSessionUser.premiumEnabled || currentSessionUser.plan === 'premium');
+  const premiumEnabled = isPremiumEnabledForUser(currentSessionUser);
   if (!premiumEnabled) return;
 
   try {
@@ -1650,7 +1833,7 @@ function addReviewItem(question, status) {
 }
 
 function isCurrentUserPremium() {
-  return Boolean(currentSessionUser && (currentSessionUser.premiumEnabled || currentSessionUser.plan === 'premium'));
+  return isPremiumEnabledForUser(currentSessionUser);
 }
 
 async function startSession() {
@@ -1665,6 +1848,7 @@ async function startSession() {
   }
   const count = getSessionQuestionCount(questionCountSelect.value);
   sessionWrongQuestions = [];
+  setPracticeScreenReady(false);
   startBtn.disabled = true;
   startBtn.textContent = '生成中...';
   updateAiStatus(
@@ -1685,8 +1869,29 @@ async function startSession() {
 
   try {
     const generated = [];
+    const usedInSession = new Set();
     for (let i = 0; i < count; i += 1) {
-      generated.push(await generateQuestion());
+      let question = null;
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const candidate = await generateQuestion();
+        if (!isDuplicateQuestion(candidate, usedInSession)) {
+          question = candidate;
+          break;
+        }
+      }
+
+      if (!question) {
+        question = currentPracticeMode === 'grammar'
+          ? pickUniqueGrammarFallback(selectedGrammar, usedInSession)
+          : pickUniqueTranslationFallback(currentLevel, usedInSession);
+      }
+
+      const signature = getQuestionSignature(question);
+      if (signature) {
+        usedInSession.add(signature);
+        rememberQuestionSignature(signature);
+      }
+      generated.push(question);
     }
     currentQuestions = generated;
     updateAiStatus(
@@ -1696,27 +1901,34 @@ async function startSession() {
       true,
     );
   } catch (error) {
+    const usedInSession = new Set();
     if (currentPracticeMode === 'grammar') {
       const fallback = getSelectedGrammar();
-      currentQuestions = Array.from({ length: count }, () => ({
-        prompt: fallback?.sampleJapanese || '週末に友達と韓国語で話したいです。',
-        answer: fallback?.sampleAnswer || '주말에 친구와 한국어로 이야기하고 싶어요.',
-        hint: fallback?.hint || '指定文法の型を含めて作文しましょう。',
-        mode: 'grammar',
-        targetGrammar: fallback?.grammar || '',
-        grammarId: fallback?.id || '',
-        source: 'fallback',
-      }));
+      currentQuestions = Array.from({ length: count }, () => {
+        const question = pickUniqueGrammarFallback(fallback, usedInSession);
+        const signature = getQuestionSignature(question);
+        if (signature) {
+          usedInSession.add(signature);
+          rememberQuestionSignature(signature);
+        }
+        return question;
+      });
     } else {
       currentQuestions = Array.from({ length: count }, () => {
-        const fallback = questionBank[currentLevel][Math.floor(Math.random() * questionBank[currentLevel].length)];
-        return { ...fallback, mode: 'translation', source: 'fallback' };
+        const question = pickUniqueTranslationFallback(currentLevel, usedInSession);
+        const signature = getQuestionSignature(question);
+        if (signature) {
+          usedInSession.add(signature);
+          rememberQuestionSignature(signature);
+        }
+        return question;
       });
     }
     updateAiStatus('AI生成に失敗したため、サンプル問題で進めます。', false);
   }
 
   showQuestion();
+  setPracticeScreenReady(true);
   startBtn.disabled = false;
   startBtn.textContent = 'セッション開始';
 }
@@ -1823,6 +2035,14 @@ function showQuestion() {
   if (firstQuestionGuide) {
     firstQuestionGuide.hidden = currentIndex !== 0;
   }
+  pendingSolvedMemoryPayload = null;
+  pendingSolvedMemorySaved = false;
+  setSaveToPremiumButtonVisible(false);
+  showSaveToPremiumStatus('');
+  if (saveToPremiumBtn) {
+    saveToPremiumBtn.disabled = false;
+    saveToPremiumBtn.textContent = 'マイ作文集に追加';
+  }
   answerInput.value = '';
   answerInput.focus();
 }
@@ -1910,7 +2130,7 @@ function showHint() {
 
 async function autoSaveGrammarMistakeLog(question, userAnswer, correctedText, status, grammarUsed, score) {
   if (!currentSessionUser || status === '正解') return;
-  const premiumEnabled = Boolean(currentSessionUser.premiumEnabled || currentSessionUser.plan === 'premium');
+  const premiumEnabled = isPremiumEnabledForUser(currentSessionUser);
   if (!premiumEnabled) return;
 
   const grammar = question.targetGrammar || getSelectedGrammar()?.grammar || '文法別作文';
@@ -2095,6 +2315,25 @@ async function evaluateAnswer() {
   if (followUpBox) {
     followUpBox.hidden = true;
   }
+  if (isPremiumEnabledForUser(currentSessionUser)) {
+    pendingSolvedMemoryPayload = buildSolvedMemoryPayload({
+      question,
+      userAnswer,
+      correctedText,
+      status,
+      score,
+    });
+    pendingSolvedMemorySaved = false;
+    setSaveToPremiumButtonVisible(true);
+    if (saveToPremiumBtn) {
+      saveToPremiumBtn.disabled = false;
+      saveToPremiumBtn.textContent = 'マイ作文集に追加';
+    }
+    showSaveToPremiumStatus('');
+  } else {
+    setSaveToPremiumButtonVisible(false);
+    showSaveToPremiumStatus('');
+  }
   feedbackBox.hidden = false;
 }
 
@@ -2182,6 +2421,7 @@ function retryWrongQuestions() {
   currentQuestions = sessionWrongQuestions.map((item) => ({ ...item, source: 'retry' }));
   currentIndex = 0;
   sessionWrongQuestions = [];
+  setPracticeScreenReady(true);
   showQuestion();
   updateAiStatus('間違えた問題のみ再挑戦を開始しました。', false);
 }
@@ -2202,6 +2442,7 @@ function startReviewItem(index) {
   }];
   currentIndex = 0;
   currentLevel = selected?.level || 'beginner';
+  setPracticeScreenReady(true);
   showQuestion();
   updateAiStatus('復習候補を表示しました。', false);
 }
@@ -2212,6 +2453,9 @@ hintBtn.addEventListener('click', showHint);
 nextBtn.addEventListener('click', goToNextQuestion);
 if (speakBtn) {
   speakBtn.addEventListener('click', speakFeedbackText);
+}
+if (saveToPremiumBtn) {
+  saveToPremiumBtn.addEventListener('click', saveSolvedAnswerToPremium);
 }
 if (shareBtn) {
   shareBtn.addEventListener('click', shareToX);
@@ -2327,6 +2571,10 @@ if (topLogoutBtn) {
   topLogoutBtn.addEventListener('click', async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     currentSessionUser = null;
+    pendingSolvedMemoryPayload = null;
+    pendingSolvedMemorySaved = false;
+    setSaveToPremiumButtonVisible(false);
+    showSaveToPremiumStatus('');
     renderAuthProfile(null);
     if (googleAuthStatus) {
       googleAuthStatus.textContent = 'ログアウトしました。';
@@ -2365,5 +2613,6 @@ window.addEventListener('DOMContentLoaded', () => {
   initGoogleSignIn();
   loadFeedbackComments();
   updateAiStatus('AI接続状態を確認しています...', false);
+  setPracticeScreenReady(false);
   applyPracticeQueryParams();
 });

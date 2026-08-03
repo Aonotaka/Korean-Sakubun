@@ -24,10 +24,20 @@ const premiumStats = document.getElementById('premiumStats');
 const premiumWeeklySaved = document.getElementById('premiumWeeklySaved');
 const premiumWeeklyReviews = document.getElementById('premiumWeeklyReviews');
 const premiumWeeklyAchievement = document.getElementById('premiumWeeklyAchievement');
+const premiumReviewQueue = document.getElementById('premiumReviewQueue');
+const premiumReviewQueueStatus = document.getElementById('premiumReviewQueueStatus');
+const premiumRefreshQueueBtn = document.getElementById('premiumRefreshQueueBtn');
+const premiumBulkReviewBtn = document.getElementById('premiumBulkReviewBtn');
 
 let currentSessionUser = null;
 let premiumMemoriesCache = [];
 let premiumEditingId = '';
+let premiumReviewQueueCache = [];
+
+function isPremiumEnabledForUser(user) {
+  if (!user || typeof user !== 'object') return false;
+  return Boolean(user.role === 'admin' || user.premiumEnabled || user.plan === 'premium');
+}
 
 function buildDefaultAvatarDataUrl(name = 'User') {
   const initial = String(name || 'U').trim().slice(0, 1).toUpperCase() || 'U';
@@ -214,7 +224,118 @@ function getSortedPremiumMemories(items) {
     });
   }
 
+  if (sort === 'curve_priority') {
+    return source.sort((a, b) => {
+      const aPriority = Number(a.reviewPriority) || 0;
+      const bPriority = Number(b.reviewPriority) || 0;
+      if (aPriority !== bPriority) return bPriority - aPriority;
+      const aDue = new Date(a.nextReviewAt || 0).getTime() || Number.MAX_SAFE_INTEGER;
+      const bDue = new Date(b.nextReviewAt || 0).getTime() || Number.MAX_SAFE_INTEGER;
+      return aDue - bDue;
+    });
+  }
+
   return source.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+}
+
+function setReviewQueueStatus(message = '') {
+  if (!premiumReviewQueueStatus) return;
+  premiumReviewQueueStatus.textContent = message;
+}
+
+function renderPremiumReviewQueue(items) {
+  if (!premiumReviewQueue) return;
+  const queue = Array.isArray(items) ? items : [];
+  if (!queue.length) {
+    premiumReviewQueue.innerHTML = '<li>今日すぐ復習すべき作文はありません。新しい作文を追加して学習を続けましょう。</li>';
+    return;
+  }
+
+  premiumReviewQueue.innerHTML = '';
+  queue.forEach((item, index) => {
+    const li = document.createElement('li');
+    const heading = document.createElement('strong');
+    heading.textContent = `${index + 1}. ${item.title || '無題の作文'}`;
+    const detail = document.createElement('p');
+    const dueLabel = item.nextReviewAt ? formatDateTime(item.nextReviewAt) : '未設定';
+    const overdueDays = Math.max(0, Number(item.overdueDays) || 0);
+    const priority = Number(item.reviewPriority) || 0;
+    detail.textContent = `次回復習: ${dueLabel} / 遅延日数: ${overdueDays}日 / 優先度: ${priority}`;
+
+    const action = document.createElement('button');
+    action.className = 'btn btn--secondary';
+    action.type = 'button';
+    action.dataset.action = 'queue-review-premium-memory';
+    action.dataset.id = item.id || '';
+    action.textContent = 'この作文を復習した';
+
+    li.appendChild(heading);
+    li.appendChild(detail);
+    li.appendChild(action);
+    premiumReviewQueue.appendChild(li);
+  });
+}
+
+async function loadPremiumReviewQueue() {
+  if (!premiumReviewQueue) return;
+  if (!currentSessionUser) {
+    premiumReviewQueueCache = [];
+    setReviewQueueStatus('ログインすると優先復習キューが表示されます。');
+    renderPremiumReviewQueue([]);
+    return;
+  }
+  if (!isPremiumEnabledForUser(currentSessionUser)) {
+    premiumReviewQueueCache = [];
+    setReviewQueueStatus('プレミアム会員向け機能です。');
+    renderPremiumReviewQueue([]);
+    return;
+  }
+
+  setReviewQueueStatus('忘却曲線に基づく優先キューを更新中...');
+  try {
+    const response = await fetch('/api/premium/memories/review-queue?limit=12');
+    const queue = response.ok ? await response.json() : [];
+    premiumReviewQueueCache = Array.isArray(queue) ? queue : [];
+    renderPremiumReviewQueue(premiumReviewQueueCache);
+    setReviewQueueStatus(`優先復習 ${premiumReviewQueueCache.length}件を表示中`);
+  } catch (error) {
+    premiumReviewQueueCache = [];
+    setReviewQueueStatus('優先キューの取得に失敗しました。');
+    renderPremiumReviewQueue([]);
+  }
+}
+
+async function reviewTopPriorityMemories(limit = 5) {
+  if (!isPremiumEnabledForUser(currentSessionUser)) {
+    setReviewQueueStatus('プレミアム会員向け機能です。');
+    return;
+  }
+
+  const targets = premiumReviewQueueCache.slice(0, Math.max(1, limit)).filter((item) => item?.id);
+  if (!targets.length) {
+    setReviewQueueStatus('復習対象がありません。');
+    return;
+  }
+
+  if (premiumBulkReviewBtn) premiumBulkReviewBtn.disabled = true;
+  setReviewQueueStatus(`上位${targets.length}件を復習済みに更新しています...`);
+
+  let successCount = 0;
+  for (const item of targets) {
+    try {
+      const response = await fetch(`/api/premium/memories/${encodeURIComponent(item.id)}/review`, { method: 'POST' });
+      if (response.ok) {
+        successCount += 1;
+      }
+    } catch (_error) {
+      // Continue to next card even if one request fails.
+    }
+  }
+
+  setReviewQueueStatus(`${successCount}/${targets.length}件を復習済みにしました。`);
+  await loadPremiumMemories();
+  await loadPremiumReviewQueue();
+  if (premiumBulkReviewBtn) premiumBulkReviewBtn.disabled = false;
 }
 
 function renderPremiumMemories(items) {
@@ -355,7 +476,7 @@ async function loadPremiumMemories() {
     return;
   }
 
-  const premiumEnabled = Boolean(currentSessionUser.premiumEnabled || currentSessionUser.plan === 'premium');
+  const premiumEnabled = isPremiumEnabledForUser(currentSessionUser);
   if (premiumMemoryForm) premiumMemoryForm.hidden = !premiumEnabled;
   if (premiumSearchInput) premiumSearchInput.disabled = !premiumEnabled;
   if (premiumFilterSelect) premiumFilterSelect.disabled = !premiumEnabled;
@@ -373,6 +494,9 @@ async function loadPremiumMemories() {
     premiumMemoriesCache = [];
     updatePremiumStats([]);
     resetPremiumDashboard();
+    premiumReviewQueueCache = [];
+    setReviewQueueStatus('プレミアム会員向け機能です。');
+    renderPremiumReviewQueue([]);
     return;
   }
 
@@ -383,12 +507,16 @@ async function loadPremiumMemories() {
     premiumMemoriesCache = Array.isArray(memories) ? [...memories] : [];
     renderPremiumMemories(premiumMemoriesCache);
     premiumStatus.textContent = 'あなた専用の作文集です。追加・編集・復習で品質を高めましょう。';
+    await loadPremiumReviewQueue();
   } catch (error) {
     premiumStatus.textContent = '保存データの読み込みに失敗しました。';
     premiumMemoryList.innerHTML = '<li>保存データを読み込めませんでした。</li>';
     premiumMemoriesCache = [];
     updatePremiumStats([]);
     resetPremiumDashboard();
+    premiumReviewQueueCache = [];
+    setReviewQueueStatus('優先キューの読み込みに失敗しました。');
+    renderPremiumReviewQueue([]);
   }
 }
 
@@ -399,7 +527,7 @@ async function startPremiumCheckout() {
     return;
   }
 
-  if (currentSessionUser.premiumEnabled || currentSessionUser.plan === 'premium') {
+  if (isPremiumEnabledForUser(currentSessionUser)) {
     premiumStatus.textContent = 'すでにプレミアムプランです。';
     return;
   }
@@ -440,7 +568,7 @@ async function submitPremiumMemory(event) {
   event.preventDefault();
   if (!premiumMemoryForm || !premiumMemoryText || !premiumStatus) return;
 
-  const premiumEnabled = Boolean(currentSessionUser?.premiumEnabled || currentSessionUser?.plan === 'premium');
+  const premiumEnabled = isPremiumEnabledForUser(currentSessionUser);
   if (!currentSessionUser) {
     premiumStatus.textContent = 'ログインしてください。';
     return;
@@ -498,13 +626,19 @@ async function handlePremiumMemoryAction(event) {
   const memoryId = button.dataset.id;
   if (!memoryId) return;
 
-  const premiumEnabled = Boolean(currentSessionUser.premiumEnabled || currentSessionUser.plan === 'premium');
+  const premiumEnabled = isPremiumEnabledForUser(currentSessionUser);
   if (!premiumEnabled) return;
 
   try {
     if (action === 'review-premium-memory') {
       await fetch(`/api/premium/memories/${encodeURIComponent(memoryId)}/review`, { method: 'POST' });
       await loadPremiumMemories();
+      return;
+    }
+    if (action === 'queue-review-premium-memory') {
+      await fetch(`/api/premium/memories/${encodeURIComponent(memoryId)}/review`, { method: 'POST' });
+      await loadPremiumMemories();
+      await loadPremiumReviewQueue();
       return;
     }
     if (action === 'favorite-premium-memory') {
@@ -566,6 +700,10 @@ if (premiumMemoryList) {
   premiumMemoryList.addEventListener('click', handlePremiumMemoryAction);
 }
 
+if (premiumReviewQueue) {
+  premiumReviewQueue.addEventListener('click', handlePremiumMemoryAction);
+}
+
 if (premiumMemoryCancelEditBtn) {
   premiumMemoryCancelEditBtn.addEventListener('click', () => {
     resetPremiumEditorState();
@@ -595,6 +733,14 @@ if (premiumCheckoutBtn) {
   premiumCheckoutBtn.addEventListener('click', startPremiumCheckout);
 }
 
+if (premiumRefreshQueueBtn) {
+  premiumRefreshQueueBtn.addEventListener('click', loadPremiumReviewQueue);
+}
+
+if (premiumBulkReviewBtn) {
+  premiumBulkReviewBtn.addEventListener('click', () => reviewTopPriorityMemories(5));
+}
+
 if (topLogoutBtn) {
   topLogoutBtn.addEventListener('click', async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -607,4 +753,5 @@ if (topLogoutBtn) {
 window.addEventListener('DOMContentLoaded', async () => {
   await refreshAuthState();
   await loadPremiumMemories();
+  await loadPremiumReviewQueue();
 });

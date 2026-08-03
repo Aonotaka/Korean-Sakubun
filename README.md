@@ -45,6 +45,8 @@ ADMIN_PASSWORD=StrongAdminPassword123!
 - Feedback retention is unlimited by default. If you need to cap records, set `FEEDBACK_MAX_ITEMS` to a positive number.
 - If you want to grant premium access to specific demo accounts without billing, set `PREMIUM_ACCESS_EMAILS` to a comma-separated list of email addresses.
 - Premium users can save personal study texts and review them repeatedly from the homepage.
+- User-dependent operation logs (login/logout, progress updates, feedback, blog comments, premium memory changes, admin plan changes) are appended to `DATA_DIR/user-events.log`.
+- Audit log retention is unlimited by default. To cap the number of retained log lines, set `USER_AUDIT_MAX_ITEMS` to a positive number.
 
 ### Stripe subscription setup
 
@@ -118,8 +120,14 @@ ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=generate_a_long_random_password
 ADMIN_SECRET_PATH=/korean-admin-secret
 
+# Google login (required for regular user sign-in)
+GOOGLE_CLIENT_ID=your_google_oauth_web_client_id
+
 # Persistent storage for user data and sessions
 DATA_DIR=/var/data/korean-sakubun
+
+# Optional cap for audit log lines (0 means unlimited)
+USER_AUDIT_MAX_ITEMS=0
 
 # Optional: grant premium access to selected accounts
 PREMIUM_ACCESS_EMAILS=vip@example.com,teacher@example.com
@@ -172,6 +180,7 @@ Profile C: External TTS enabled
 3. Open `音声で聞く` and check audio plays.
 4. Confirm `/admin` redirects to `/` (hidden admin route behavior).
 5. Access `ADMIN_SECRET_PATH` and confirm admin login gate works.
+6. As admin, call `GET /api/admin/config-status` and confirm `missingRequired` is empty and `dataDirWritable` is true.
 
 ## Live demo
 

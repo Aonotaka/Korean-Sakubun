@@ -21,7 +21,6 @@
           <a href="/">メインページ</a>
           <a href="/#practice">練習する</a>
           <a href="/premium.html">マイ作文集</a>
-          <a href="/blog">ブログ</a>
         </div>
         <div class="topbar__account" aria-live="polite">
           <a id="topLoginLink" href="/login?provider=google" class="btn btn--secondary btn--small">ログイン</a>
@@ -67,6 +66,7 @@
               <option value="created_desc">作成日順 (新しい)</option>
               <option value="created_asc">作成日順 (古い)</option>
               <option value="due_asc">復習期限順</option>
+              <option value="curve_priority">忘却曲線おすすめ順</option>
               <option value="favorite_priority">お気に入り優先</option>
             </select>
           </div>
@@ -91,6 +91,16 @@
               <strong id="premiumWeeklyAchievement">0%</strong>
             </article>
           </div>
+
+          <div class="panel__head">
+            <h3>今日の優先復習 (忘却曲線)</h3>
+            <p id="premiumReviewQueueStatus" class="panel__hint">読み込み中...</p>
+          </div>
+          <div class="actions-row">
+            <button id="premiumRefreshQueueBtn" class="btn btn--secondary" type="button">優先キューを更新</button>
+            <button id="premiumBulkReviewBtn" class="btn btn--secondary" type="button">上位5件を復習済みにする</button>
+          </div>
+          <ul id="premiumReviewQueue" class="review-list"></ul>
 
           <form id="premiumMemoryForm" class="feedback-form">
             <input id="premiumMemoryTitle" maxlength="80" placeholder="タイトル (例: 週末の予定を説明する文)" />

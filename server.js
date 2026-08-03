@@ -15,6 +15,7 @@ const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const POSTS_FILE = path.join(DATA_DIR, 'posts.json');
 const FEEDBACK_FILE = path.join(DATA_DIR, 'feedback.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+const USER_AUDIT_LOG_FILE = path.join(DATA_DIR, 'user-events.log');
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const STRIPE_SECRET_KEY = String(process.env.STRIPE_SECRET_KEY || '').trim();
 const STRIPE_PRICE_ID = String(process.env.STRIPE_PRICE_ID || '').trim();
@@ -31,6 +32,7 @@ const PREMIUM_ACCESS_EMAILS = new Set(
 );
 const sessions = new Map();
 const FEEDBACK_MAX_ITEMS = Math.max(0, Number(process.env.FEEDBACK_MAX_ITEMS) || 0);
+const USER_AUDIT_MAX_ITEMS = Math.max(0, Number(process.env.USER_AUDIT_MAX_ITEMS) || 0);
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -49,13 +51,65 @@ function logStartupSummary() {
   const provider = getProvider();
   const hasKey = Boolean(process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY);
   const adminConfigured = Boolean(process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD);
+  const googleClientConfigured = Boolean(String(process.env.GOOGLE_CLIENT_ID || '').trim());
   console.log('=== Korean-Sakubun startup ===');
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Host mode: ${isRender ? 'Render' : 'local'}`);
   console.log(`AI provider: ${provider}`);
   console.log(`AI key configured: ${hasKey ? 'yes' : 'no'}`);
   console.log(`Admin account configured: ${adminConfigured ? 'yes' : 'no'}`);
+  console.log(`Google login configured: ${googleClientConfigured ? 'yes' : 'no'}`);
   console.log(`Static files served from: ${path.join(__dirname)}`);
+
+  const status = getDeploymentConfigStatus();
+  if (status.missingRequired.length) {
+    console.warn(`Missing required env keys: ${status.missingRequired.join(', ')}`);
+  }
+  if (status.missingRecommended.length) {
+    console.warn(`Missing recommended env keys: ${status.missingRecommended.join(', ')}`);
+  }
+}
+
+function getDeploymentConfigStatus() {
+  const aiProvider = getProvider();
+  const required = ['ADMIN_EMAIL', 'ADMIN_PASSWORD', 'ADMIN_SECRET_PATH', 'DATA_DIR'];
+  const recommended = ['GOOGLE_CLIENT_ID'];
+
+  if (aiProvider === 'groq') {
+    required.push('GROQ_API_KEY');
+  }
+  if (aiProvider === 'openai') {
+    required.push('OPENAI_API_KEY');
+  }
+  if (aiProvider === 'google' || aiProvider === 'gemini') {
+    required.push('GOOGLE_AI_API_KEY');
+  }
+
+  const isMissing = (key) => !String(process.env[key] || '').trim();
+  const missingRequired = required.filter(isMissing);
+  const missingRecommended = recommended.filter(isMissing);
+
+  return {
+    aiProvider,
+    missingRequired,
+    missingRecommended,
+    configured: {
+      ADMIN_EMAIL: !isMissing('ADMIN_EMAIL'),
+      ADMIN_PASSWORD: !isMissing('ADMIN_PASSWORD'),
+      ADMIN_SECRET_PATH: !isMissing('ADMIN_SECRET_PATH'),
+      DATA_DIR: !isMissing('DATA_DIR'),
+      GOOGLE_CLIENT_ID: !isMissing('GOOGLE_CLIENT_ID'),
+      GROQ_API_KEY: !isMissing('GROQ_API_KEY'),
+      OPENAI_API_KEY: !isMissing('OPENAI_API_KEY'),
+      GOOGLE_AI_API_KEY: !isMissing('GOOGLE_AI_API_KEY'),
+      GEMINI_API_KEY: !isMissing('GEMINI_API_KEY'),
+      PREMIUM_ACCESS_EMAILS: !isMissing('PREMIUM_ACCESS_EMAILS'),
+      GOOGLE_CLOUD_TTS_ACCESS_TOKEN: !isMissing('GOOGLE_CLOUD_TTS_ACCESS_TOKEN'),
+      STRIPE_SECRET_KEY: !isMissing('STRIPE_SECRET_KEY'),
+      STRIPE_PRICE_ID: !isMissing('STRIPE_PRICE_ID'),
+      STRIPE_WEBHOOK_SECRET: !isMissing('STRIPE_WEBHOOK_SECRET'),
+    },
+  };
 }
 
 function hashPassword(password) {
@@ -214,6 +268,32 @@ function computeNextPremiumReviewAt(reviewCount = 0) {
   return nextDate.toISOString();
 }
 
+function buildPremiumReviewPriority(memory, nowMs = Date.now()) {
+  const source = memory && typeof memory === 'object' ? memory : {};
+  const reviewCount = Math.max(0, Number(source.reviewCount) || 0);
+  const targetRepeats = Math.max(1, Number(source.targetRepeats) || 3);
+  const nextReviewMs = new Date(String(source.nextReviewAt || '')).getTime();
+  const hasValidNextReview = Number.isFinite(nextReviewMs);
+  const overdueDays = hasValidNextReview
+    ? Math.max(0, Math.floor((nowMs - nextReviewMs) / (24 * 60 * 60 * 1000)))
+    : 0;
+  const remainingRepeats = Math.max(0, targetRepeats - reviewCount);
+  const hasMistakeTag = Array.isArray(source.tags)
+    ? source.tags.some((tag) => String(tag).trim() === '誤答ログ')
+    : false;
+  const mistakeBoost = String(source.sourceType || '').trim() === 'grammar-mistake' || hasMistakeTag ? 2 : 0;
+  const dueBoost = hasValidNextReview ? (nextReviewMs <= nowMs ? 4 : 0) : 1;
+  const priority = (overdueDays * 3) + (remainingRepeats * 2) + dueBoost + mistakeBoost;
+  const isDue = hasValidNextReview ? nextReviewMs <= nowMs : (reviewCount < targetRepeats);
+
+  return {
+    isDue,
+    overdueDays,
+    remainingRepeats,
+    priority,
+  };
+}
+
 function normalizeUserRecord(user) {
   const normalized = { ...user };
   normalized.progress = normalizeProgress(normalized.progress);
@@ -326,10 +406,101 @@ function readJson(filePath, fallback) {
 
 function writeJson(filePath, data) {
   const dirPath = path.dirname(filePath);
-  const tempPath = path.join(dirPath, `${path.basename(filePath)}.tmp`);
   const payload = JSON.stringify(data, null, 2);
-  fs.writeFileSync(tempPath, payload);
-  fs.renameSync(tempPath, filePath);
+  fs.mkdirSync(dirPath, { recursive: true });
+  const tempPath = path.join(
+    dirPath,
+    `${path.basename(filePath)}.${process.pid}.${Date.now()}.${crypto.randomBytes(6).toString('hex')}.tmp`,
+  );
+
+  try {
+    fs.writeFileSync(tempPath, payload, 'utf8');
+    fs.renameSync(tempPath, filePath);
+  } catch (error) {
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath);
+      }
+    } catch (_cleanupError) {
+      // Cleanup failures should not hide the original write error.
+    }
+
+    if (['EXDEV', 'EPERM', 'EACCES', 'ENOENT'].includes(error.code)) {
+      fs.writeFileSync(filePath, payload, 'utf8');
+      return;
+    }
+
+    throw error;
+  }
+}
+
+function maskEmail(email) {
+  const value = String(email || '').trim().toLowerCase();
+  if (!value || !value.includes('@')) {
+    return '';
+  }
+  const [localPart, domainPart] = value.split('@');
+  if (!domainPart) {
+    return '';
+  }
+  const visible = localPart.slice(0, Math.min(2, localPart.length));
+  return `${visible}***@${domainPart}`;
+}
+
+function trimAuditLogIfNeeded(filePath, maxItems) {
+  if (!(maxItems > 0) || !fs.existsSync(filePath)) {
+    return;
+  }
+
+  const raw = fs.readFileSync(filePath, 'utf8');
+  if (!raw) {
+    return;
+  }
+
+  const lines = raw.trimEnd().split('\n');
+  if (lines.length <= maxItems) {
+    return;
+  }
+
+  const retained = lines.slice(-maxItems).join('\n');
+  fs.writeFileSync(filePath, `${retained}\n`, 'utf8');
+}
+
+function getRequestAuditMeta(req) {
+  return {
+    method: String(req.method || '').trim(),
+    path: String(req.originalUrl || req.url || '').trim().slice(0, 180),
+    ip: String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '')
+      .split(',')[0]
+      .trim()
+      .slice(0, 80),
+    userAgent: String(req.headers['user-agent'] || '').trim().slice(0, 180),
+  };
+}
+
+function appendUserAuditLog(entry) {
+  try {
+    const payload = {
+      timestamp: new Date().toISOString(),
+      action: String(entry?.action || 'unknown').trim().slice(0, 64),
+      status: String(entry?.status || 'success').trim().slice(0, 24),
+      actor: {
+        userId: String(entry?.actor?.userId || '').trim().slice(0, 80),
+        email: String(entry?.actor?.email || '').trim().slice(0, 120),
+        role: String(entry?.actor?.role || '').trim().slice(0, 24),
+        authProvider: String(entry?.actor?.authProvider || '').trim().slice(0, 24),
+      },
+      target: entry?.target && typeof entry.target === 'object' ? entry.target : {},
+      details: entry?.details && typeof entry.details === 'object' ? entry.details : {},
+      request: entry?.request && typeof entry.request === 'object' ? entry.request : {},
+    };
+
+    fs.mkdirSync(path.dirname(USER_AUDIT_LOG_FILE), { recursive: true });
+    fs.appendFileSync(USER_AUDIT_LOG_FILE, `${JSON.stringify(payload)}\n`, 'utf8');
+    trimAuditLogIfNeeded(USER_AUDIT_LOG_FILE, USER_AUDIT_MAX_ITEMS);
+  } catch (error) {
+    console.warn('Failed to append user audit log:', error.message);
+  }
 }
 
 function ensureSeedData() {
@@ -1659,14 +1830,28 @@ app.post('/api/webhook/stripe', express.raw({ type: 'application/json' }), async
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+const hiddenPublicPages = new Set([
+  '/blog',
+  '/blog.html',
+  '/what-is-korean-composition',
+  '/what-is-korean-composition.html',
+  '/learning-tips',
+  '/learning-tips.html',
+]);
+
+app.use((req, res, next) => {
+  const normalizedPath = String(req.path || '').replace(/\/+$/, '') || '/';
+  if (hiddenPublicPages.has(normalizedPath)) {
+    return res.redirect('/');
+  }
+  return next();
+});
+
 app.use(express.static(path.join(__dirname)));
 
 app.get('/', (_req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-app.get('/blog', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'blog.html'));
 });
 
 app.get('/login', (_req, res) => {
@@ -1695,27 +1880,12 @@ app.get('/admin.html', (_req, res) => {
   res.redirect('/');
 });
 
-app.get('/what-is-korean-composition', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'what-is-korean-composition.html'));
-});
-
-app.get('/what-is-korean-composition.html', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'what-is-korean-composition.html'));
-});
-
-app.get('/learning-tips', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'learning-tips.html'));
-});
-
-app.get('/learning-tips.html', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'learning-tips.html'));
-});
-
 app.get('/api/auth/me', (req, res) => {
   const user = getSessionUser(req);
   if (!user) {
     return res.json(null);
   }
+  const premiumEnabled = isPremiumUser(user);
   res.json({
     id: user.id,
     name: user.name,
@@ -1723,9 +1893,9 @@ app.get('/api/auth/me', (req, res) => {
     role: user.role,
     avatarUrl: user.avatarUrl || '',
     authProvider: user.authProvider || 'password',
-    plan: user.plan || 'free',
-    is_premium: isPremiumUser(user),
-    premiumEnabled: isPremiumUser(user),
+    plan: premiumEnabled ? 'premium' : (user.plan || 'free'),
+    is_premium: premiumEnabled,
+    premiumEnabled,
     premiumMemoryCount: Array.isArray(user.premiumMemories) ? user.premiumMemories.length : 0,
   });
 });
@@ -1803,15 +1973,37 @@ app.post('/api/auth/login', (req, res) => {
   const users = normalizePasswordStorage(readJson(USERS_FILE, []));
   const user = users.find((candidate) => candidate.email.toLowerCase() === email.toLowerCase() && verifyPassword(password, candidate.password));
   if (!user) {
+    appendUserAuditLog({
+      action: 'auth_login',
+      status: 'failed',
+      actor: { email: maskEmail(email), authProvider: 'password' },
+      details: { reason: 'invalid_credentials' },
+      request: getRequestAuditMeta(req),
+    });
     return res.status(401).json({ error: 'メールアドレスまたはパスワードが違います' });
   }
 
   // Keep password login for admin route only; regular users should use Google login.
   if (user.role !== 'admin') {
+    appendUserAuditLog({
+      action: 'auth_login',
+      status: 'blocked',
+      actor: { userId: user.id, email: maskEmail(user.email), role: user.role, authProvider: 'password' },
+      details: { reason: 'non_admin_password_login' },
+      request: getRequestAuditMeta(req),
+    });
     return res.status(403).json({ error: '通常ユーザーはGoogleログインをご利用ください' });
   }
 
-  setSession(res, user);
+  const sessionId = setSession(res, user);
+  appendUserAuditLog({
+    action: 'auth_login',
+    status: 'success',
+    actor: { userId: user.id, email: maskEmail(user.email), role: user.role, authProvider: 'password' },
+    details: { sessionIdSuffix: sessionId.slice(-8) },
+    request: getRequestAuditMeta(req),
+  });
+  const premiumEnabled = isPremiumUser(user);
   res.json({
     id: user.id,
     name: user.name,
@@ -1819,9 +2011,9 @@ app.post('/api/auth/login', (req, res) => {
     role: user.role,
     avatarUrl: user.avatarUrl || '',
     authProvider: user.authProvider || 'password',
-    plan: user.plan || 'free',
-    is_premium: isPremiumUser(user),
-    premiumEnabled: isPremiumUser(user),
+    plan: premiumEnabled ? 'premium' : (user.plan || 'free'),
+    is_premium: premiumEnabled,
+    premiumEnabled,
   });
 });
 
@@ -1833,11 +2025,23 @@ app.post('/api/auth/google', async (req, res) => {
 
   const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
   if (!clientId) {
+    appendUserAuditLog({
+      action: 'auth_google',
+      status: 'blocked',
+      details: { reason: 'google_client_id_not_configured' },
+      request: getRequestAuditMeta(req),
+    });
     return res.status(503).json({ error: 'Googleログインは未設定です' });
   }
 
   const verification = await verifyGoogleIdToken(credential);
   if (!verification.ok) {
+    appendUserAuditLog({
+      action: 'auth_google',
+      status: 'failed',
+      details: { reason: verification.error || 'google_verification_failed' },
+      request: getRequestAuditMeta(req),
+    });
     return res.status(401).json({ error: verification.error || 'Googleログインに失敗しました' });
   }
 
@@ -1853,6 +2057,7 @@ app.post('/api/auth/google', async (req, res) => {
     return res.status(403).json({ error: '管理者アカウントへのGoogle連携は許可されていません' });
   }
 
+  const isNewUser = !user;
   if (!user) {
     user = {
       id: buildUniqueUserId(users, name || normalizedEmail.split('@')[0], `user-${Date.now()}`),
@@ -1886,7 +2091,15 @@ app.post('/api/auth/google', async (req, res) => {
   }
 
   saveUsers(users.map(normalizeUserRecord));
-  setSession(res, user);
+  const sessionId = setSession(res, user);
+  appendUserAuditLog({
+    action: 'auth_google',
+    status: 'success',
+    actor: { userId: user.id, email: maskEmail(user.email), role: user.role, authProvider: 'google' },
+    details: { isNewUser, sessionIdSuffix: sessionId.slice(-8) },
+    request: getRequestAuditMeta(req),
+  });
+  const premiumEnabled = isPremiumUser(user);
   return res.json({
     id: user.id,
     name: user.name,
@@ -1894,14 +2107,26 @@ app.post('/api/auth/google', async (req, res) => {
     role: user.role,
     avatarUrl: user.avatarUrl || '',
     authProvider: 'google',
-    plan: user.plan || 'free',
-    is_premium: isPremiumUser(user),
-    premiumEnabled: isPremiumUser(user),
+    plan: premiumEnabled ? 'premium' : (user.plan || 'free'),
+    is_premium: premiumEnabled,
+    premiumEnabled,
   });
 });
 
-app.post('/api/auth/logout', (_req, res) => {
-  clearSession(_req, res);
+app.post('/api/auth/logout', (req, res) => {
+  const user = getSessionUser(req);
+  clearSession(req, res);
+  appendUserAuditLog({
+    action: 'auth_logout',
+    status: 'success',
+    actor: {
+      userId: String(user?.id || '').trim(),
+      email: maskEmail(user?.email || ''),
+      role: String(user?.role || '').trim(),
+      authProvider: String(user?.authProvider || '').trim(),
+    },
+    request: getRequestAuditMeta(req),
+  });
   res.json({ ok: true });
 });
 
@@ -1925,6 +2150,23 @@ app.post('/api/progress', (req, res) => {
   if (!currentUser) {
     return res.status(404).json({ error: 'ユーザーが見つかりません' });
   }
+  appendUserAuditLog({
+    action: 'progress_update',
+    status: 'success',
+    actor: {
+      userId: currentUser.id,
+      email: maskEmail(currentUser.email || ''),
+      role: currentUser.role,
+      authProvider: currentUser.authProvider || 'password',
+    },
+    details: {
+      attempted: Number(currentUser.progress?.attempted) || 0,
+      correct: Number(currentUser.progress?.correct) || 0,
+      streak: Number(currentUser.progress?.streak) || 0,
+      reviewQueueSize: Array.isArray(currentUser.progress?.reviewQueue) ? currentUser.progress.reviewQueue.length : 0,
+    },
+    request: getRequestAuditMeta(req),
+  });
   res.json(currentUser.progress);
 });
 
@@ -2206,7 +2448,7 @@ app.get('/api/feedback', (_req, res) => {
 
 app.post('/api/feedback', (req, res) => {
   const user = getSessionUser(req);
-  const name = String(req.body?.name || '匿名').trim().slice(0, 24);
+  const inputName = String(req.body?.name || '').trim().slice(0, 24);
   const comment = String(req.body?.comment || '').trim();
 
   if (!comment) {
@@ -2217,11 +2459,13 @@ app.post('/api/feedback', (req, res) => {
     return res.status(400).json({ error: 'コメントは280文字以内で入力してください' });
   }
 
+  const accountName = String(user?.name || '').trim().slice(0, 24);
+  const displayName = inputName || accountName || '匿名';
   const feedback = readJson(FEEDBACK_FILE, []);
   const safeFeedback = Array.isArray(feedback) ? feedback : [];
   const newItem = {
     id: `feedback-${Date.now()}`,
-    name: user ? (user.name || name || '匿名') : (name || '匿名'),
+    name: displayName,
     userId: user ? user.id : '',
     userEmail: user ? user.email : '',
     authProvider: user ? (user.authProvider || 'password') : 'guest',
@@ -2234,6 +2478,19 @@ app.post('/api/feedback', (req, res) => {
     ? safeFeedback.slice(0, FEEDBACK_MAX_ITEMS)
     : safeFeedback;
   writeJson(FEEDBACK_FILE, savedFeedback);
+  appendUserAuditLog({
+    action: 'feedback_create',
+    status: 'success',
+    actor: {
+      userId: String(newItem.userId || '').trim(),
+      email: maskEmail(newItem.userEmail || ''),
+      role: String(user?.role || '').trim(),
+      authProvider: String(newItem.authProvider || 'guest').trim(),
+    },
+    target: { feedbackId: newItem.id },
+    details: { commentLength: comment.length },
+    request: getRequestAuditMeta(req),
+  });
   res.status(201).json(newItem);
 });
 
@@ -2305,21 +2562,38 @@ app.delete('/api/blog/posts/:id', (req, res) => {
 
 app.post('/api/blog/posts/:id/comments', (req, res) => {
   const user = getSessionUser(req);
+  const inputAuthor = String(req.body?.author || '').trim().slice(0, 24);
+  const accountName = String(user?.name || '').trim().slice(0, 24);
+  const displayAuthor = inputAuthor || accountName || '匿名';
   const posts = readJson(POSTS_FILE, []);
   const post = posts.find((item) => item.id === req.params.id);
   if (!post) {
     return res.status(404).json({ error: 'Post not found' });
   }
-  post.comments.push({
+  const newComment = {
     id: `comment-${Date.now()}`,
-    author: user ? (user.name || req.body.author || '匿名') : (req.body.author || '匿名'),
+    author: displayAuthor,
     userId: user ? user.id : '',
     userEmail: user ? user.email : '',
     authProvider: user ? (user.authProvider || 'password') : 'guest',
     comment: req.body.comment || '',
     createdAt: new Date().toISOString(),
-  });
+  };
+  post.comments.push(newComment);
   savePosts(posts);
+  appendUserAuditLog({
+    action: 'blog_comment_create',
+    status: 'success',
+    actor: {
+      userId: String(newComment.userId || '').trim(),
+      email: maskEmail(newComment.userEmail || ''),
+      role: String(user?.role || '').trim(),
+      authProvider: String(newComment.authProvider || 'guest').trim(),
+    },
+    target: { postId: post.id, commentId: newComment.id },
+    details: { commentLength: String(newComment.comment || '').length },
+    request: getRequestAuditMeta(req),
+  });
   res.json(post);
 });
 
@@ -2332,6 +2606,44 @@ app.get('/api/premium/memories', (req, res) => {
     return res.status(403).json({ error: 'プレミアム機能をご利用いただけません' });
   }
   res.json(Array.isArray(user.premiumMemories) ? user.premiumMemories : []);
+});
+
+app.get('/api/premium/memories/review-queue', (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'ログインが必要です' });
+  }
+  if (!isPremiumUser(user)) {
+    return res.status(403).json({ error: 'プレミアム機能をご利用いただけません' });
+  }
+
+  const limit = Math.max(1, Math.min(50, Number(req.query?.limit) || 10));
+  const source = Array.isArray(user.premiumMemories) ? user.premiumMemories : [];
+  const nowMs = Date.now();
+  const queue = source
+    .map((item) => {
+      const card = normalizePremiumMemory(item);
+      if (!card) return null;
+      const priority = buildPremiumReviewPriority(card, nowMs);
+      return {
+        ...card,
+        reviewPriority: priority.priority,
+        overdueDays: priority.overdueDays,
+        remainingRepeats: priority.remainingRepeats,
+        isDue: priority.isDue,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (Number(b.isDue) !== Number(a.isDue)) return Number(b.isDue) - Number(a.isDue);
+      if (b.reviewPriority !== a.reviewPriority) return b.reviewPriority - a.reviewPriority;
+      const aDue = new Date(a.nextReviewAt || 0).getTime() || Number.MAX_SAFE_INTEGER;
+      const bDue = new Date(b.nextReviewAt || 0).getTime() || Number.MAX_SAFE_INTEGER;
+      return aDue - bDue;
+    })
+    .slice(0, limit);
+
+  return res.json(queue);
 });
 
 app.post('/api/premium/memories', (req, res) => {
@@ -2415,6 +2727,23 @@ app.post('/api/premium/memories', (req, res) => {
     return res.status(404).json({ error: 'ユーザーが見つかりません' });
   }
 
+  appendUserAuditLog({
+    action: 'premium_memory_upsert',
+    status: 'success',
+    actor: {
+      userId: savedMemory.id,
+      email: maskEmail(savedMemory.email || ''),
+      role: savedMemory.role,
+      authProvider: savedMemory.authProvider || 'password',
+    },
+    details: {
+      sourceType: sourceType.slice(0, 32),
+      memoryCount: Array.isArray(savedMemory.premiumMemories) ? savedMemory.premiumMemories.length : 0,
+      textLength: text.length,
+    },
+    request: getRequestAuditMeta(req),
+  });
+
   res.status(201).json(savedMemory.premiumMemories || []);
 });
 
@@ -2479,6 +2808,20 @@ app.patch('/api/premium/memories/:id', (req, res) => {
     return res.status(404).json({ error: 'メモが見つかりません' });
   }
 
+  appendUserAuditLog({
+    action: 'premium_memory_update',
+    status: 'success',
+    actor: {
+      userId: updatedUser.id,
+      email: maskEmail(updatedUser.email || ''),
+      role: updatedUser.role,
+      authProvider: updatedUser.authProvider || 'password',
+    },
+    target: { memoryId },
+    details: { memoryCount: Array.isArray(updatedUser.premiumMemories) ? updatedUser.premiumMemories.length : 0 },
+    request: getRequestAuditMeta(req),
+  });
+
   res.json(updatedUser.premiumMemories || []);
 });
 
@@ -2516,6 +2859,20 @@ app.post('/api/premium/memories/:id/review', (req, res) => {
     return res.status(404).json({ error: 'メモが見つかりません' });
   }
 
+  appendUserAuditLog({
+    action: 'premium_memory_review',
+    status: 'success',
+    actor: {
+      userId: updatedUser.id,
+      email: maskEmail(updatedUser.email || ''),
+      role: updatedUser.role,
+      authProvider: updatedUser.authProvider || 'password',
+    },
+    target: { memoryId },
+    details: { memoryCount: Array.isArray(updatedUser.premiumMemories) ? updatedUser.premiumMemories.length : 0 },
+    request: getRequestAuditMeta(req),
+  });
+
   res.json(updatedUser.premiumMemories || []);
 });
 
@@ -2538,6 +2895,20 @@ app.delete('/api/premium/memories/:id', (req, res) => {
   if (!updatedUser) {
     return res.status(404).json({ error: 'メモが見つかりません' });
   }
+
+  appendUserAuditLog({
+    action: 'premium_memory_delete',
+    status: 'success',
+    actor: {
+      userId: updatedUser.id,
+      email: maskEmail(updatedUser.email || ''),
+      role: updatedUser.role,
+      authProvider: updatedUser.authProvider || 'password',
+    },
+    target: { memoryId },
+    details: { memoryCount: Array.isArray(updatedUser.premiumMemories) ? updatedUser.premiumMemories.length : 0 },
+    request: getRequestAuditMeta(req),
+  });
 
   res.json(updatedUser.premiumMemories || []);
 });
@@ -2585,10 +2956,52 @@ app.patch('/api/admin/users/:id/plan', (req, res) => {
     return res.status(404).json({ error: 'ユーザーが見つかりません' });
   }
 
+  appendUserAuditLog({
+    action: 'admin_plan_update',
+    status: 'success',
+    actor: {
+      userId: user.id,
+      email: maskEmail(user.email || ''),
+      role: user.role,
+      authProvider: user.authProvider || 'password',
+    },
+    target: { userId: updatedUser.id },
+    details: { plan: updatedUser.plan || 'free' },
+    request: getRequestAuditMeta(req),
+  });
+
   res.json({
     id: updatedUser.id,
     plan: updatedUser.plan || 'free',
     premiumEnabled: isPremiumUser(updatedUser),
+  });
+});
+
+app.get('/api/admin/config-status', (req, res) => {
+  const user = getSessionUser(req);
+  if (!user || user.role !== 'admin') {
+    return res.status(403).json({ error: '管理者のみ閲覧できます' });
+  }
+
+  const status = getDeploymentConfigStatus();
+  const dataDirWritable = (() => {
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      const probePath = path.join(DATA_DIR, `.probe-${Date.now()}-${process.pid}.tmp`);
+      fs.writeFileSync(probePath, 'ok', 'utf8');
+      fs.unlinkSync(probePath);
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  })();
+
+  return res.json({
+    ...status,
+    dataDir: DATA_DIR,
+    dataDirWritable,
+    auditLogFile: USER_AUDIT_LOG_FILE,
+    auditLogConfigured: true,
   });
 });
 

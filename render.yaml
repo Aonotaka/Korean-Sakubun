@@ -23,8 +23,12 @@ services:
         value: /korean-admin-secret
       - key: DATA_DIR
         value: /var/data/korean-sakubun
+      - key: GOOGLE_CLIENT_ID
+        sync: false
       - key: PREMIUM_ACCESS_EMAILS
         sync: false
+      - key: USER_AUDIT_MAX_ITEMS
+        value: "0"
       # Optional external TTS (choose one provider)
       - key: GOOGLE_CLOUD_TTS_ACCESS_TOKEN
         sync: false
