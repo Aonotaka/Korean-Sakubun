@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>プレミアム: マイ作文集 | ひたすら韓国語作文</title>
+    <meta
+      name="description"
+      content="プレミアム専用のマイ作文集ページです。保存・検索・編集・復習で韓国語作文の定着を強化できます。"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="hero hero--compact">
+      <nav class="topbar" aria-label="サイトナビゲーション">
+        <a class="brand" href="/">
+          <img src="KoreanSakubunLogo.png" alt="" class="brand__logo" loading="lazy" />
+          <span>ひたすら韓国語作文</span>
+        </a>
+        <div class="topbar__links">
+          <a href="/">メインページ</a>
+          <a href="/#practice">練習する</a>
+          <a href="/premium.html">マイ作文集</a>
+          <a href="/blog">ブログ</a>
+        </div>
+        <div class="topbar__account" aria-live="polite">
+          <a id="topLoginLink" href="/login?provider=google" class="btn btn--secondary btn--small">ログイン</a>
+          <button id="topLogoutBtn" class="btn btn--secondary btn--small" type="button" hidden>ログアウト</button>
+          <div id="topProfile" class="top-profile" hidden>
+            <img id="topProfileAvatar" class="top-profile__avatar" alt="ユーザーアイコン" />
+            <div class="top-profile__meta">
+              <span id="topProfileName" class="top-profile__name">未ログイン</span>
+              <span id="topProfileState" class="top-profile__state">未ログイン</span>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <div class="hero__content" id="top">
+        <div class="hero__intro">
+          <p class="eyebrow">Premium collection</p>
+          <h1>プレミアム: マイ作文集</h1>
+          <p class="hero__lead">
+            保存・検索・編集・復習を1ページで管理し、間違えた文法を確実に定着させます。
+          </p>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="section progress-section">
+        <div class="panel">
+          <h2>マイ作文集</h2>
+          <p>自分だけの作文をストックし、検索・編集・復習サイクルで定着させます。</p>
+          <p id="premiumStatus" class="session-status"></p>
+          <button id="premiumCheckoutBtn" class="btn btn--primary" type="button">有料プランに登録する (月額 480円)</button>
+
+          <div class="premium-toolbar" aria-label="作文集の検索と絞り込み">
+            <input id="premiumSearchInput" maxlength="80" placeholder="タイトル・本文・タグで検索" />
+            <select id="premiumFilterSelect">
+              <option value="all">すべて</option>
+              <option value="favorites">お気に入り</option>
+              <option value="due">復習期限が近い</option>
+              <option value="mistakes">誤答ログのみ</option>
+            </select>
+            <select id="premiumSortSelect">
+              <option value="created_desc">作成日順 (新しい)</option>
+              <option value="created_asc">作成日順 (古い)</option>
+              <option value="due_asc">復習期限順</option>
+              <option value="favorite_priority">お気に入り優先</option>
+            </select>
+          </div>
+
+          <div id="premiumStats" class="premium-stats" aria-live="polite">
+            <span>合計 0</span>
+            <span>お気に入り 0</span>
+            <span>復習候補 0</span>
+          </div>
+
+          <div id="premiumDashboard" class="premium-dashboard" aria-live="polite">
+            <article class="premium-kpi-card">
+              <p>今週の新規保存</p>
+              <strong id="premiumWeeklySaved">0</strong>
+            </article>
+            <article class="premium-kpi-card">
+              <p>今週の復習アクション</p>
+              <strong id="premiumWeeklyReviews">0</strong>
+            </article>
+            <article class="premium-kpi-card">
+              <p>今週の復習達成率</p>
+              <strong id="premiumWeeklyAchievement">0%</strong>
+            </article>
+          </div>
+
+          <form id="premiumMemoryForm" class="feedback-form">
+            <input id="premiumMemoryTitle" maxlength="80" placeholder="タイトル (例: 週末の予定を説明する文)" />
+            <textarea id="premiumMemoryText" rows="3" maxlength="280" placeholder="覚えたい韓国語や日本語の文" required></textarea>
+            <textarea id="premiumMemoryNote" rows="2" maxlength="220" placeholder="学習メモ (文法ポイント・ミス傾向など)"></textarea>
+            <input id="premiumMemoryTags" maxlength="120" placeholder="タグ (例: 助詞, 日常会話, 敬語)" />
+            <label class="input-label" for="premiumMemoryTone">用途</label>
+            <select id="premiumMemoryTone">
+              <option value="free">自由</option>
+              <option value="daily">日常会話</option>
+              <option value="business">ビジネス</option>
+              <option value="exam">試験対策</option>
+            </select>
+            <label class="input-label" for="premiumMemoryTarget">復習回数</label>
+            <input id="premiumMemoryTarget" type="number" min="1" max="20" value="3" />
+            <div class="actions-row">
+              <button id="premiumMemorySubmitBtn" class="btn btn--primary" type="submit">作文を追加する</button>
+              <button id="premiumMemoryCancelEditBtn" class="btn btn--secondary" type="button" hidden>編集をキャンセル</button>
+            </div>
+          </form>
+
+          <ul id="premiumMemoryList" class="review-list"></ul>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>ひたすら韓国語作文 — 日本人のための韓国語作文練習とAI添削サービス</p>
+    </footer>
+
+    <script src="premium.js"></script>
+  </body>
+</html>

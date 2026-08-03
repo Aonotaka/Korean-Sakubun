@@ -370,11 +370,12 @@ async function initGoogleSignIn() {
 }
 
 function getPracticeModeLabel() {
-  return '文法別作文モード';
+  return getSelectedPracticeMode() === 'grammar' ? '文法別練習モード' : '日本語→韓国語モード';
 }
 
 function getSelectedPracticeMode() {
-  return 'grammar';
+  const mode = String(practiceModeSelect?.value || '').trim();
+  return mode === 'grammar' ? 'grammar' : 'translation';
 }
 
 function getSessionQuestionCount(requestedCount) {
@@ -443,6 +444,16 @@ function updateTargetGrammarBanner() {
   targetGrammarLabel.textContent = `${selected.grammar}（${selected.meaning || ''}）`;
 }
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function renderGrammarCatalog() {
   if (!grammarCatalog) return;
   const categories = grammarMasterList.length ? grammarMasterList : fallbackGrammarMasterList;
@@ -506,12 +517,19 @@ function selectGrammar(grammarId, { silent = false } = {}) {
 }
 
 async function loadGrammarMasterList() {
+  if (grammarSelectionStatus) {
+    grammarSelectionStatus.textContent = '文法を読み込み中...';
+  }
+
   try {
-    const response = await fetch('/api/grammar/list');
+    const response = await fetchWithTimeout('/api/grammar/list', {}, 5000);
     const data = response.ok ? await response.json() : [];
     grammarMasterList = Array.isArray(data) && data.length ? data : fallbackGrammarMasterList;
   } catch (error) {
     grammarMasterList = fallbackGrammarMasterList;
+    if (grammarSelectionStatus) {
+      grammarSelectionStatus.textContent = '通信不安定のためローカル文法リストを使用中';
+    }
   }
 
   const fallbackSelected = progressState.selectedGrammarId || selectedGrammarId;
@@ -613,8 +631,12 @@ function updateTtsStatus(message) {
 }
 
 function syncPracticeModeUi() {
+  const mode = getSelectedPracticeMode();
+
   if (answerInput) {
-    answerInput.placeholder = '例: 한국에 가서 삼겹살을 먹고 싶어요.';
+    answerInput.placeholder = mode === 'grammar'
+      ? '例: 한국에 가서 삼겹살을 먹고 싶어요.'
+      : '例: 저는 오늘 친구를 만나요.';
   }
 
   if (promptLabel && currentQuestions.length === 0) {
@@ -622,26 +644,44 @@ function syncPracticeModeUi() {
   }
 
   if (practiceHints[0]) {
-    practiceHints[0].textContent = '文法の型を意識し、必ず指定文法を含めて作文してください。';
+    practiceHints[0].textContent = mode === 'grammar'
+      ? '文法の型を意識し、必ず指定文法を含めて作文してください。'
+      : '日本語の意味を自然な韓国語に置き換えて作文してください。';
   }
 
   if (practiceHints[1]) {
-    practiceHints[1].textContent = '採点では「指定文法を正しく使えたか」が必ず評価されます。';
+    practiceHints[1].textContent = mode === 'grammar'
+      ? '採点では「指定文法を正しく使えたか」が必ず評価されます。'
+      : '採点では語順・助詞・語尾の自然さが評価されます。';
+  }
+
+  if (targetGrammarBanner) {
+    targetGrammarBanner.hidden = mode !== 'grammar';
+  }
+
+  if (grammarSelectionStatus) {
+    const selected = getSelectedGrammar();
+    grammarSelectionStatus.textContent = mode === 'grammar'
+      ? (selected ? `${selected.grammar} を選択中` : '文法を選択してください')
+      : '日本語→韓国語モードでは文法選択は任意です';
   }
 
   if (currentQuestions.length === 0 && promptText) {
-    promptText.textContent = '文法を選んで「セッション開始」を押してください。';
+    promptText.textContent = mode === 'grammar'
+      ? '文法を選んで「セッション開始」を押してください。'
+      : '「セッション開始」を押して翻訳問題を始めてください。';
   }
 }
 
 async function applyPracticeQueryParams() {
   const params = new URLSearchParams(window.location.search);
+  const mode = params.get('mode');
   const grammarId = params.get('grammar');
   const level = params.get('level');
   const autostart = params.get('autostart');
 
   if (practiceModeSelect) {
-    practiceModeSelect.value = 'grammar';
+    practiceModeSelect.value = mode === 'grammar' ? 'grammar' : 'translation';
   }
 
   if (levelSelect && ['beginner', 'intermediate', 'advanced'].includes(level)) {
@@ -1572,6 +1612,7 @@ function speakWithBrowserTts(text) {
 }
 
 function renderReviewList() {
+  if (!reviewList) return;
   if (!progressState.reviewQueue.length) {
     reviewList.innerHTML = '<li>まだ復習候補がありません。</li>';
     return;
@@ -1599,11 +1640,15 @@ function addReviewItem(question, status) {
   }
 }
 
+function isCurrentUserPremium() {
+  return Boolean(currentSessionUser && (currentSessionUser.premiumEnabled || currentSessionUser.plan === 'premium'));
+}
+
 async function startSession() {
   currentLevel = levelSelect.value;
-  currentPracticeMode = 'grammar';
-  const selectedGrammar = getSelectedGrammar();
-  if (!selectedGrammar) {
+  currentPracticeMode = getSelectedPracticeMode();
+  const selectedGrammar = currentPracticeMode === 'grammar' ? getSelectedGrammar() : null;
+  if (currentPracticeMode === 'grammar' && !selectedGrammar) {
     updateAiStatus('文法リストの読み込み後に開始してください。', false);
     return;
   }
@@ -1611,7 +1656,12 @@ async function startSession() {
   sessionWrongQuestions = [];
   startBtn.disabled = true;
   startBtn.textContent = '生成中...';
-  updateAiStatus(`${selectedGrammar.grammar} の問題を生成しています...`, false);
+  updateAiStatus(
+    currentPracticeMode === 'grammar'
+      ? `${selectedGrammar.grammar} の問題を生成しています...`
+      : '翻訳問題を生成しています...',
+    false,
+  );
   currentQuestions = [];
   currentIndex = 0;
   feedbackBox.hidden = true;
@@ -1628,18 +1678,30 @@ async function startSession() {
       generated.push(await generateQuestion());
     }
     currentQuestions = generated;
-    updateAiStatus(`${selectedGrammar.grammar} のトレーニングを始めます。`, true);
+    updateAiStatus(
+      currentPracticeMode === 'grammar'
+        ? `${selectedGrammar.grammar} のトレーニングを始めます。`
+        : '日本語→韓国語トレーニングを始めます。',
+      true,
+    );
   } catch (error) {
-    const fallback = getSelectedGrammar();
-    currentQuestions = Array.from({ length: count }, () => ({
-      prompt: fallback?.sampleJapanese || '週末に友達と韓国語で話したいです。',
-      answer: fallback?.sampleAnswer || '주말에 친구와 한국어로 이야기하고 싶어요.',
-      hint: fallback?.hint || '指定文法の型を含めて作文しましょう。',
-      mode: 'grammar',
-      targetGrammar: fallback?.grammar || '',
-      grammarId: fallback?.id || '',
-      source: 'fallback',
-    }));
+    if (currentPracticeMode === 'grammar') {
+      const fallback = getSelectedGrammar();
+      currentQuestions = Array.from({ length: count }, () => ({
+        prompt: fallback?.sampleJapanese || '週末に友達と韓国語で話したいです。',
+        answer: fallback?.sampleAnswer || '주말에 친구와 한국어로 이야기하고 싶어요.',
+        hint: fallback?.hint || '指定文法の型を含めて作文しましょう。',
+        mode: 'grammar',
+        targetGrammar: fallback?.grammar || '',
+        grammarId: fallback?.id || '',
+        source: 'fallback',
+      }));
+    } else {
+      currentQuestions = Array.from({ length: count }, () => {
+        const fallback = questionBank[currentLevel][Math.floor(Math.random() * questionBank[currentLevel].length)];
+        return { ...fallback, mode: 'translation', source: 'fallback' };
+      });
+    }
     updateAiStatus('AI生成に失敗したため、サンプル問題で進めます。', false);
   }
 
@@ -1649,35 +1711,44 @@ async function startSession() {
 }
 
 function hasMismatchByKeyword(prompt, answer) {
-  async function generateQuestion() {
-    const selectedGrammar = getSelectedGrammar();
-    try {
-      const response = await fetch('/api/generate-question', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          level: currentLevel,
-          mode: 'grammar',
-          grammarId: selectedGrammar?.id || '',
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
+  const promptText = String(prompt || '').trim();
+  const answerText = String(answer || '').trim();
+  if (!promptText || !answerText) return false;
+  const tokens = promptText.split(/\s+/).filter(Boolean).slice(0, 3);
+  if (!tokens.length) return false;
+  return tokens.every((token) => !answerText.includes(token));
+}
 
-      if (response.ok && data && data.japanese_question && data.model_answer) {
-        return {
-          prompt: data.japanese_question,
-          answer: data.model_answer,
-          hint: data.hint || selectedGrammar?.meaning || '',
-          mode: 'grammar',
-          targetGrammar: data.target_grammar || selectedGrammar?.grammar || '',
-          grammarId: data.grammar_id || selectedGrammar?.id || '',
-          source: 'ai',
-        };
-      }
-    } catch (error) {
-      console.warn('AI generation failed', error);
+async function generateQuestion() {
+  const selectedGrammar = currentPracticeMode === 'grammar' ? getSelectedGrammar() : null;
+  try {
+    const response = await fetch('/api/generate-question', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        level: currentLevel,
+        mode: currentPracticeMode,
+        grammarId: selectedGrammar?.id || '',
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (response.ok && data && data.japanese_question && data.model_answer) {
+      return {
+        prompt: data.japanese_question,
+        answer: data.model_answer,
+        hint: data.hint || selectedGrammar?.meaning || '',
+        mode: currentPracticeMode,
+        targetGrammar: currentPracticeMode === 'grammar' ? (data.target_grammar || selectedGrammar?.grammar || '') : '',
+        grammarId: currentPracticeMode === 'grammar' ? (data.grammar_id || selectedGrammar?.id || '') : '',
+        source: 'ai',
+      };
     }
+  } catch (error) {
+    console.warn('AI generation failed', error);
+  }
 
+  if (currentPracticeMode === 'grammar') {
     return {
       prompt: selectedGrammar?.sampleJapanese || '韓国に行って韓国語をもっと上手に話したいです。',
       answer: selectedGrammar?.sampleAnswer || '한국에 가서 한국어를 더 잘 말하고 싶어요.',
@@ -1685,13 +1756,6 @@ function hasMismatchByKeyword(prompt, answer) {
       mode: 'grammar',
       targetGrammar: selectedGrammar?.grammar || '',
       grammarId: selectedGrammar?.id || '',
-      source: 'fallback',
-    };
-  }
-      ...pick,
-      imageUrl: buildLocalImageDataUrl(pick.scene),
-      sentenceGuide: currentLevel === 'advanced' ? '2文推奨。対象を2つ以上書く。' : currentLevel === 'intermediate' ? '1〜2文で状況要素を2つ以上入れる。' : '1文中心で場所と動作を書く。',
-      mode: 'image',
       source: 'fallback',
     };
   }
@@ -1730,8 +1794,13 @@ function showQuestion() {
   }
 
   if (targetGrammarBanner && targetGrammarLabel) {
-    targetGrammarBanner.hidden = false;
-    targetGrammarLabel.textContent = question.targetGrammar || getSelectedGrammar()?.grammar || '-';
+    if (currentPracticeMode === 'grammar') {
+      targetGrammarBanner.hidden = false;
+      targetGrammarLabel.textContent = question.targetGrammar || getSelectedGrammar()?.grammar || '-';
+    } else {
+      targetGrammarBanner.hidden = true;
+      targetGrammarLabel.textContent = '-';
+    }
   }
 
   progressBadge.textContent = `${currentIndex + 1} / ${currentQuestions.length}`;
@@ -1815,8 +1884,17 @@ function containsLongEnglish(text) {
 function showHint() {
   const question = currentQuestions[currentIndex];
   if (!question) return;
+  const importantWords = String(question.answer || '')
+    .split(/\s+/)
+    .map((word) => word.trim().replace(/[.,!?]/g, ''))
+    .filter((word) => /[가-힣]/.test(word))
+    .filter((word, index, list) => word.length >= 2 && list.indexOf(word) === index)
+    .slice(0, 4);
+
   hintBox.hidden = false;
-  hintBox.textContent = `ヒント: ${question.hint}`;
+  hintBox.textContent = importantWords.length
+    ? `ヒント: ${question.hint}\n重要単語: ${importantWords.join(', ')}`
+    : `ヒント: ${question.hint}`;
 }
 
 async function autoSaveGrammarMistakeLog(question, userAnswer, correctedText, status, grammarUsed, score) {
@@ -1889,9 +1967,9 @@ async function evaluateAnswer() {
         modelAnswer: question.answer,
         userAnswer,
         level: currentLevel,
-        mode: 'grammar',
-        targetGrammar: question.targetGrammar || '',
-        grammarId: question.grammarId || selectedGrammarId,
+        mode: currentPracticeMode,
+        targetGrammar: currentPracticeMode === 'grammar' ? (question.targetGrammar || '') : '',
+        grammarId: currentPracticeMode === 'grammar' ? (question.grammarId || selectedGrammarId) : '',
       }),
     });
 
@@ -1924,7 +2002,7 @@ async function evaluateAnswer() {
     score = Math.max(score, 72);
   }
 
-  if (grammarUsed === false && score >= 90) {
+  if (currentPracticeMode === 'grammar' && grammarUsed === false && score >= 90) {
     status = '惜しい';
     score = 84;
   }
@@ -1970,19 +2048,21 @@ async function evaluateAnswer() {
     }
   }
   addReviewItem(question, status);
-  const grammarProgress = progressState.grammarProgress || {};
-  const grammarKey = question.grammarId || selectedGrammarId;
-  if (grammarKey) {
-    const current = grammarProgress[grammarKey] || { solved: 0, correct: 0, achievedAt: '' };
-    current.solved += 1;
-    if (status === '正解') current.correct += 1;
-    if (current.solved >= 10 && !current.achievedAt) {
-      current.achievedAt = new Date().toISOString();
+  if (currentPracticeMode === 'grammar') {
+    const grammarProgress = progressState.grammarProgress || {};
+    const grammarKey = question.grammarId || selectedGrammarId;
+    if (grammarKey) {
+      const current = grammarProgress[grammarKey] || { solved: 0, correct: 0, achievedAt: '' };
+      current.solved += 1;
+      if (status === '正解') current.correct += 1;
+      if (current.solved >= 10 && !current.achievedAt) {
+        current.achievedAt = new Date().toISOString();
+      }
+      grammarProgress[grammarKey] = current;
+      progressState.grammarProgress = grammarProgress;
     }
-    grammarProgress[grammarKey] = current;
-    progressState.grammarProgress = grammarProgress;
+    await autoSaveGrammarMistakeLog(question, userAnswer, correctedText, status, grammarUsed, score);
   }
-  await autoSaveGrammarMistakeLog(question, userAnswer, correctedText, status, grammarUsed, score);
   saveProgress();
   updateProgressUI();
   renderGrammarCatalog();
@@ -1991,7 +2071,10 @@ async function evaluateAnswer() {
   feedbackStatus.className = `feedback-status ${statusClass}`;
   feedbackText.textContent = `採点: ${score}点`;
   modelAnswerBox.innerHTML = `<strong>模範解答</strong><div>${modelAnswerText}</div>`;
-  feedbackExplanation.textContent = `${feedback}\n\n文法チェック: ${grammarFeedback || (grammarUsed === false ? '指定文法の使用が確認できませんでした。' : '指定文法の使用は概ね確認できました。')}\n\n${structureAdvice}\n\n${explanation}\n\n修正案: ${correctedText}`;
+  const grammarLine = currentPracticeMode === 'grammar'
+    ? `\n\n文法チェック: ${grammarFeedback || (grammarUsed === false ? '指定文法の使用が確認できませんでした。' : '指定文法の使用は概ね確認できました。')}`
+    : '';
+  feedbackExplanation.textContent = `${feedback}${grammarLine}\n\n${structureAdvice}\n\n${explanation}\n\n修正案: ${correctedText}`;
   alternatives.innerHTML = '';
   alternativesList.forEach((item) => {
     const chip = document.createElement('span');
@@ -2063,7 +2146,12 @@ function goToNextQuestion() {
       sessionResultText.textContent = `${total}問中${correct}問正解でした。${wrong ? ` 間違えた${wrong}問を再挑戦できます。` : ' 全問正解です。'}`;
     }
     if (retryWrongBtn) {
-      retryWrongBtn.disabled = wrong === 0;
+      const premiumEnabled = isCurrentUserPremium();
+      retryWrongBtn.hidden = !premiumEnabled;
+      retryWrongBtn.disabled = wrong === 0 || !premiumEnabled;
+      if (!premiumEnabled && wrong > 0 && sessionResultText) {
+        sessionResultText.textContent += ' 間違えた問題の再挑戦はプレミアム機能です。';
+      }
     }
     if (sessionResultBox) {
       sessionResultBox.hidden = false;
@@ -2072,6 +2160,10 @@ function goToNextQuestion() {
 }
 
 function retryWrongQuestions() {
+  if (!isCurrentUserPremium()) {
+    updateAiStatus('間違えた問題の再挑戦はプレミアム機能です。', false);
+    return;
+  }
   if (!sessionWrongQuestions.length) {
     updateAiStatus('再挑戦する問題はありません。', false);
     return;
@@ -2113,10 +2205,12 @@ if (speakBtn) {
 if (shareBtn) {
   shareBtn.addEventListener('click', shareToX);
 }
-reviewBtn.addEventListener('click', () => {
-  renderReviewList();
-  updateAiStatus('復習候補を更新しました。', false);
-});
+if (reviewBtn) {
+  reviewBtn.addEventListener('click', () => {
+    renderReviewList();
+    updateAiStatus('復習候補を更新しました。', false);
+  });
+}
 
 if (registerForm) {
   registerForm.addEventListener('submit', async (event) => {
@@ -2250,7 +2344,6 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   if (practiceModeSelect) {
-    practiceModeSelect.value = 'grammar';
     practiceModeSelect.addEventListener('change', syncPracticeModeUi);
   }
 
