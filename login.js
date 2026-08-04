@@ -8,6 +8,18 @@ function shouldAutoPromptGoogle() {
   return params.get('provider') === 'google';
 }
 
+function redirectToAdminLogin(adminLoginPath) {
+  const targetPath = String(adminLoginPath || '').trim();
+  if (!targetPath) return false;
+  if (googleAuthStatus) {
+    googleAuthStatus.textContent = '管理者アカウントを確認しました。管理者専用ログイン画面へ移動します...';
+  }
+  setTimeout(() => {
+    window.location.href = targetPath;
+  }, 600);
+  return true;
+}
+
 async function handleGoogleCredentialResponse(response) {
   const credential = String(response?.credential || '').trim();
   if (!credential) {
@@ -25,6 +37,9 @@ async function handleGoogleCredentialResponse(response) {
     const data = await authResponse.json().catch(() => ({}));
 
     if (!authResponse.ok) {
+      if (data.code === 'ADMIN_PASSWORD_LOGIN_REQUIRED' && redirectToAdminLogin(data.adminLoginPath)) {
+        return;
+      }
       if (googleAuthStatus) googleAuthStatus.textContent = data.error || 'Googleログインできませんでした。';
       return;
     }

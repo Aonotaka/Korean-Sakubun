@@ -93,6 +93,18 @@ const targetGrammarLabel = document.getElementById('targetGrammarLabel');
 const practiceQuizPanel = document.querySelector('.panel--quiz');
 const saveToPremiumBtn = document.getElementById('saveToPremiumBtn');
 const saveToPremiumStatus = document.getElementById('saveToPremiumStatus');
+const hangulDashboard = document.getElementById('hangulDashboard');
+const hangulMatrix = document.getElementById('hangulMatrix');
+const hangulMatrixStatus = document.getElementById('hangulMatrixStatus');
+const hangulBatchimCards = document.getElementById('hangulBatchimCards');
+const hangulAnalyzerExamples = document.getElementById('hangulAnalyzerExamples');
+const hangulAnalyzerInput = document.getElementById('hangulAnalyzerInput');
+const hangulAnalyzeBtn = document.getElementById('hangulAnalyzeBtn');
+const hangulAnalyzerResult = document.getElementById('hangulAnalyzerResult');
+const hangulJumpGrammarBtn = document.getElementById('hangulJumpGrammarBtn');
+const virtualKeyboardToggle = document.getElementById('virtualKeyboardToggle');
+const virtualKeyboardStatus = document.getElementById('virtualKeyboardStatus');
+const virtualKeyboard = document.getElementById('virtualKeyboard');
 
 let koreanVoice = null;
 let koreanVoices = [];
@@ -106,6 +118,9 @@ let premiumEditingId = '';
 let grammarMasterList = [];
 let selectedGrammarId = '';
 const ttsModeStorageKey = 'korean-sakubun-tts-mode';
+let virtualKeyboardVisible = false;
+let virtualKeyboardShift = false;
+let virtualKeyboardInitialized = false;
 
 function buildBankFromSeed(seed, count) {
   const bank = [];
@@ -159,6 +174,489 @@ const questionBank = {
   intermediate: buildBankFromSeed(intermediateSeed, 200),
   advanced: buildBankFromSeed(advancedSeed, 200),
 };
+
+const hangulMatrixConsonants = ['ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ'];
+const hangulMatrixVowels = ['ㅏ', 'ㅓ', 'ㅗ', 'ㅜ', 'ㅡ', 'ㅣ'];
+const hangulRomanizationMap = {
+  'ㄱ': 'g/k',
+  'ㄲ': 'kk',
+  'ㄴ': 'n',
+  'ㄷ': 'd/t',
+  'ㄸ': 'tt',
+  'ㄹ': 'r/l',
+  'ㅁ': 'm',
+  'ㅂ': 'b/p',
+  'ㅃ': 'pp',
+  'ㅅ': 's',
+  'ㅆ': 'ss',
+  'ㅇ': 'silent/ng',
+  'ㅈ': 'j',
+  'ㅉ': 'jj',
+  'ㅊ': 'ch',
+  'ㅋ': 'k',
+  'ㅌ': 't',
+  'ㅍ': 'p',
+  'ㅎ': 'h',
+  'ㅏ': 'a',
+  'ㅐ': 'ae',
+  'ㅑ': 'ya',
+  'ㅒ': 'yae',
+  'ㅓ': 'eo',
+  'ㅔ': 'e',
+  'ㅕ': 'yeo',
+  'ㅖ': 'ye',
+  'ㅗ': 'o',
+  'ㅛ': 'yo',
+  'ㅜ': 'u',
+  'ㅠ': 'yu',
+  'ㅡ': 'eu',
+  'ㅣ': 'i',
+};
+const hangulBatchimGuides = [
+  {
+    title: 'パッチムは「下につく子音」',
+    body: '例: 간 は 가 + ㄴ。最後の子音が音節の下に入り、語尾の聞こえ方が締まります。',
+  },
+  {
+    title: '音が弱くなることがある',
+    body: '받침 の ㄱ・ㄷ・ㅂ は、語末でそれぞれ [k] [t] [p] のように短く止まって聞こえます。',
+  },
+  {
+    title: '次の母音に移動する',
+    body: '간이 は 가니 のように、パッチム ㄴ が次の音節の最初に移る感覚で読むと自然です。',
+  },
+  {
+    title: 'まずは 3 パターンで十分',
+    body: '子音 + 母音、子音 + 母音 + パッチム、パッチム移動。この3つを意識すると初級作文に入りやすくなります。',
+  },
+];
+const hangulAnalyzerSampleInputs = ['사랑', '한글', '삼겹살', '지민', 'さくら'];
+const hangulMeaningHints = {
+  '사랑': '愛',
+  '한글': 'ハングル',
+  '삼겹살': 'サムギョプサル',
+  '사과': 'りんご',
+  '사과예요': 'りんごです',
+  '우유': '牛乳',
+  '학교예요': '学校です',
+  '우유예요': '牛乳です',
+};
+const hangulKeyboardBaseRows = [
+  ['ㅂ', 'ㅈ', 'ㄷ', 'ㄱ', 'ㅅ', 'ㅛ', 'ㅕ', 'ㅑ', 'ㅐ', 'ㅔ'],
+  ['ㅁ', 'ㄴ', 'ㅇ', 'ㄹ', 'ㅎ', 'ㅗ', 'ㅓ', 'ㅏ', 'ㅣ'],
+  ['ㅋ', 'ㅌ', 'ㅊ', 'ㅍ', 'ㅠ', 'ㅜ', 'ㅡ'],
+];
+const hangulKeyboardShiftMap = {
+  'ㅂ': 'ㅃ',
+  'ㅈ': 'ㅉ',
+  'ㄷ': 'ㄸ',
+  'ㄱ': 'ㄲ',
+  'ㅅ': 'ㅆ',
+  'ㅐ': 'ㅒ',
+  'ㅔ': 'ㅖ',
+};
+const hangulDrillSeeds = [
+  { type: 'syllable', prompt: '「가」と入力してください。', answer: '가', hint: 'ㄱ + ㅏ の組み合わせです。', support: 'キー位置トレーニング', romanization: 'ga' },
+  { type: 'syllable', prompt: '「너」と入力してください。', answer: '너', hint: 'ㄴ + ㅓ の形です。', support: '子音と母音の組み合わせ', romanization: 'neo' },
+  { type: 'syllable', prompt: '「무」と入力してください。', answer: '무', hint: 'ㅁ + ㅜ の形です。', support: '子音と母音の組み合わせ', romanization: 'mu' },
+  { type: 'syllable', prompt: '「바」と入力してください。', answer: '바', hint: 'ㅂ + ㅏ の形です。', support: '子音と母音の組み合わせ', romanization: 'ba' },
+  { type: 'phonics', prompt: '「sam-gyeop-sal」をハングルで入力してください。', answer: '삼겹살', hint: '삼 + 겹 + 살 の3音節です。', support: 'フォニックス変換', romanization: 'sam-gyeop-sal' },
+  { type: 'phonics', prompt: '「han-geul」をハングルで入力してください。', answer: '한글', hint: '한 + 글 の2音節です。', support: 'フォニックス変換', romanization: 'han-geul' },
+  { type: 'anatomy', prompt: '「사랑」を入力して、形を覚えましょう。', answer: '사랑', hint: '사 = ㅅ + ㅏ / 랑 = ㄹ + ㅏ + ㅇ', support: 'ハングル解剖ドリル', romanization: 'sa-rang' },
+  { type: 'anatomy', prompt: '「우유」を入力して、母音の形を見分けましょう。', answer: '우유', hint: '우 = ㅇ + ㅜ / 유 = ㅇ + ㅠ', support: '母音の聞き分け', romanization: 'u-yu' },
+  { type: 'mini-compose', prompt: '「りんご」をハングルで書いてみましょう。', answer: '사과', hint: '単語だけでよいので、まず名詞を定着させましょう。', support: '単語レベル作文', romanization: 'sa-gwa' },
+  { type: 'mini-compose', prompt: '「りんごです」をハングルで書いてみましょう。', answer: '사과예요', hint: '名詞 + 예요 の初級フレーズです。', support: '2語フレーズ作文', romanization: 'sa-gwa-ye-yo' },
+  { type: 'mini-compose', prompt: '「学校です」をハングルで書いてみましょう。', answer: '학교예요', hint: '받침 がある名詞なので、最後の音も意識してみましょう。', support: '2語フレーズ作文', romanization: 'hak-gyo-ye-yo' },
+  { type: 'mini-compose', prompt: '「牛乳です」をハングルで書いてみましょう。', answer: '우유예요', hint: '우유 + 예요 の形です。', support: '2語フレーズ作文', romanization: 'u-yu-ye-yo' },
+];
+
+function getHangulRuntime() {
+  return window.Hangul || null;
+}
+
+function isHangulMode(mode = currentPracticeMode) {
+  return String(mode || '').trim().toLowerCase() === 'hangul';
+}
+
+function getHangulRomanization(unit) {
+  return hangulRomanizationMap[unit] || unit;
+}
+
+function normalizeHangulInput(text) {
+  const value = String(text || '').trim().replace(/\s+/g, ' ');
+  const Hangul = getHangulRuntime();
+  if (!Hangul) return value;
+  return Hangul.assemble(Hangul.disassemble(value)).replace(/\s+/g, ' ').trim();
+}
+
+function getHangulKeySequence(text) {
+  const Hangul = getHangulRuntime();
+  if (!Hangul) return String(text || '').trim();
+  return Hangul.disassemble(String(text || '').trim()).join(' ');
+}
+
+function buildHangulBreakdown(text) {
+  const Hangul = getHangulRuntime();
+  if (!Hangul) return [];
+  return Array.from(String(text || '').trim()).map((syllable) => {
+    const jamo = Hangul.disassemble(syllable).filter((unit) => /[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(unit));
+    return {
+      syllable,
+      jamo,
+      parts: jamo.map((unit) => `${unit}(${getHangulRomanization(unit)})`),
+      structure: jamo.length >= 3 ? '子音 + 母音 + パッチム' : jamo.length === 2 ? '子音 + 母音' : '単独文字',
+    };
+  }).filter((item) => item.jamo.length);
+}
+
+function buildHangulBreakdownSummary(text) {
+  return buildHangulBreakdown(text).map((item) => `${item.syllable} = ${item.parts.join(' + ')}`).join(' / ');
+}
+
+function buildLocalHangulAnalysis(text) {
+  const input = String(text || '').trim().slice(0, 48);
+  const containsHangul = /[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(input);
+  const convertedText = containsHangul ? normalizeHangulInput(input) : input;
+  return {
+    input,
+    convertedText,
+    meaning: hangulMeaningHints[convertedText] || (containsHangul ? '入力された単語をハングル分解できます。' : 'AI接続時は、日本語やローマ字からハングル候補を提案できます。'),
+    pronunciationTip: containsHangul
+      ? '各音節を区切って読み、最後に単語全体を続けて音読してみましょう。'
+      : '名前は読みをひらがな・カタカナで入れると、より自然な提案が出やすくなります。',
+    writingTip: containsHangul
+      ? '1音節ずつ、子音の位置と母音の向きを見ながら書くと覚えやすくなります。'
+      : 'まず読みを確認してから、子音と母音のまとまりへ分けて練習してください。',
+    studyTip: containsHangul
+      ? 'この単語を仮想キーボードで3回打ち直して、キー配置ごと覚えてみましょう。'
+      : 'AIが使えない場合は、ハングル単語を入れて分解モードとして使ってください。',
+    breakdown: buildHangulBreakdown(convertedText),
+    keySequence: containsHangul ? getHangulKeySequence(convertedText) : '',
+  };
+}
+
+function renderHangulMatrix() {
+  if (!hangulMatrix) return;
+  hangulMatrix.innerHTML = '';
+  const corner = document.createElement('div');
+  corner.className = 'hangul-matrix__header';
+  corner.textContent = '초성';
+  hangulMatrix.appendChild(corner);
+  hangulMatrixVowels.forEach((vowel) => {
+    const header = document.createElement('div');
+    header.className = 'hangul-matrix__header';
+    header.textContent = `${vowel} ${getHangulRomanization(vowel)}`;
+    hangulMatrix.appendChild(header);
+  });
+  hangulMatrixConsonants.forEach((consonant) => {
+    const rowLabel = document.createElement('div');
+    rowLabel.className = 'hangul-matrix__row-label';
+    rowLabel.textContent = `${consonant} ${getHangulRomanization(consonant)}`;
+    hangulMatrix.appendChild(rowLabel);
+    hangulMatrixVowels.forEach((vowel) => {
+      const Hangul = getHangulRuntime();
+      const syllable = Hangul ? Hangul.assemble([consonant, vowel]) : `${consonant}${vowel}`;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'hangul-matrix__cell';
+      button.dataset.syllable = syllable;
+      button.innerHTML = `<strong>${syllable}</strong><span>${consonant} + ${vowel}</span>`;
+      hangulMatrix.appendChild(button);
+    });
+  });
+}
+
+function renderHangulBatchimCards() {
+  if (!hangulBatchimCards) return;
+  hangulBatchimCards.innerHTML = '';
+  hangulBatchimGuides.forEach((item) => {
+    const card = document.createElement('article');
+    card.className = 'hangul-batchim-card';
+    const title = document.createElement('h4');
+    title.textContent = item.title;
+    const body = document.createElement('p');
+    body.textContent = item.body;
+    card.appendChild(title);
+    card.appendChild(body);
+    hangulBatchimCards.appendChild(card);
+  });
+}
+
+function renderHangulAnalyzerExamples() {
+  if (!hangulAnalyzerExamples) return;
+  hangulAnalyzerExamples.innerHTML = '';
+  hangulAnalyzerSampleInputs.forEach((sample) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'hangul-analyzer__chip';
+    button.dataset.sample = sample;
+    button.textContent = sample;
+    hangulAnalyzerExamples.appendChild(button);
+  });
+}
+
+function renderHangulAnalysisResult(data) {
+  if (!hangulAnalyzerResult) return;
+  hangulAnalyzerResult.hidden = false;
+  hangulAnalyzerResult.innerHTML = '';
+
+  const hero = document.createElement('div');
+  hero.className = 'hangul-analysis-result__hero';
+  const heroTitle = document.createElement('strong');
+  heroTitle.textContent = data.convertedText || data.input || '-';
+  const heroText = document.createElement('p');
+  heroText.textContent = data.meaning || '意味メモはありません。';
+  hero.appendChild(heroTitle);
+  hero.appendChild(heroText);
+  hangulAnalyzerResult.appendChild(hero);
+
+  const metaGrid = document.createElement('div');
+  metaGrid.className = 'hangul-analysis-result__meta';
+  [
+    { title: '発音のコツ', text: data.pronunciationTip || '音節ごとにゆっくり読んでみましょう。' },
+    { title: '書くコツ', text: data.writingTip || '子音と母音の位置を意識して書きましょう。' },
+    { title: '復習ヒント', text: data.studyTip || '仮想キーボードで繰り返し入力して定着させます。' },
+  ].forEach((item) => {
+    const card = document.createElement('div');
+    card.className = 'hangul-analysis-result__card';
+    const title = document.createElement('strong');
+    title.textContent = item.title;
+    const text = document.createElement('p');
+    text.textContent = item.text;
+    card.appendChild(title);
+    card.appendChild(text);
+    metaGrid.appendChild(card);
+  });
+  hangulAnalyzerResult.appendChild(metaGrid);
+
+  if (data.keySequence) {
+    const keyCard = document.createElement('div');
+    keyCard.className = 'hangul-analysis-result__card';
+    const title = document.createElement('strong');
+    title.textContent = '打鍵イメージ';
+    const text = document.createElement('p');
+    text.textContent = data.keySequence;
+    keyCard.appendChild(title);
+    keyCard.appendChild(text);
+    hangulAnalyzerResult.appendChild(keyCard);
+  }
+
+  const breakdownGrid = document.createElement('div');
+  breakdownGrid.className = 'hangul-breakdown-grid';
+  (Array.isArray(data.breakdown) ? data.breakdown : []).forEach((item) => {
+    const card = document.createElement('div');
+    card.className = 'hangul-breakdown-card';
+    const title = document.createElement('strong');
+    title.textContent = item.syllable || '-';
+    const line1 = document.createElement('p');
+    line1.textContent = Array.isArray(item.romanized) ? item.romanized.join(' + ') : Array.isArray(item.parts) ? item.parts.join(' + ') : '';
+    const line2 = document.createElement('p');
+    line2.textContent = item.structure || '';
+    card.appendChild(title);
+    card.appendChild(line1);
+    card.appendChild(line2);
+    breakdownGrid.appendChild(card);
+  });
+  if (breakdownGrid.childElementCount) {
+    hangulAnalyzerResult.appendChild(breakdownGrid);
+  }
+}
+
+async function analyzeHangulInput() {
+  const input = String(hangulAnalyzerInput?.value || '').trim();
+  if (!input) {
+    renderHangulAnalysisResult(buildLocalHangulAnalysis('사랑'));
+    return;
+  }
+  if (hangulAnalyzeBtn) {
+    hangulAnalyzeBtn.disabled = true;
+    hangulAnalyzeBtn.textContent = '解剖中...';
+  }
+  try {
+    const response = await fetch('/api/hangul/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: input }),
+    });
+    const data = response.ok ? await response.json() : buildLocalHangulAnalysis(input);
+    renderHangulAnalysisResult({
+      ...buildLocalHangulAnalysis(data.convertedText || input),
+      ...data,
+    });
+  } catch (error) {
+    renderHangulAnalysisResult(buildLocalHangulAnalysis(input));
+  } finally {
+    if (hangulAnalyzeBtn) {
+      hangulAnalyzeBtn.disabled = false;
+      hangulAnalyzeBtn.textContent = '解剖する';
+    }
+  }
+}
+
+function speakHangulSnippet(text, statusElement = hangulMatrixStatus) {
+  const koreanText = extractKoreanText(text);
+  if (!koreanText) return;
+  if (!('speechSynthesis' in window)) {
+    if (statusElement) statusElement.textContent = 'このブラウザでは音声再生に対応していません。';
+    return;
+  }
+  speakWithBrowserTts(koreanText);
+  if (statusElement) statusElement.textContent = `${koreanText} を再生しました。`;
+}
+
+function getHangulPromptLabel(question) {
+  const type = String(question?.type || '').trim();
+  if (type === 'phonics') return 'ローマ字 → ハングル';
+  if (type === 'mini-compose') return '超初級ミニ作文';
+  if (type === 'anatomy') return 'ハングル解剖ドリル';
+  return 'ハングル入力ドリル';
+}
+
+function getHangulInputPlaceholder(question) {
+  return question?.answer ? `例: ${question.answer}` : '例: 가 / 사랑 / 사과예요';
+}
+
+function buildHangulSessionQuestions(count) {
+  const pool = [...hangulDrillSeeds];
+  const selected = [];
+  while (pool.length && selected.length < count) {
+    const index = Math.floor(Math.random() * pool.length);
+    selected.push({ ...pool.splice(index, 1)[0], mode: 'hangul', source: 'local-hangul' });
+  }
+  return selected.length ? selected : [{ ...hangulDrillSeeds[0], mode: 'hangul', source: 'local-hangul' }];
+}
+
+function getHangulFeedbackMessage(type, status) {
+  if (status === '正解') {
+    if (type === 'mini-compose') return '単語からフレーズへの橋渡しができています。次は文法別作文へ進めます。';
+    if (type === 'phonics') return '音の並びをハングルへ変換できています。';
+    return '文字の形と音の組み合わせを正しくつかめています。';
+  }
+  if (status === '惜しい') {
+    return 'かなり近いです。子音の向きか母音、またはパッチムをもう一度確認してみましょう。';
+  }
+  return '仮想キーボードを使いながら、子音 + 母音の順に1文字ずつ組み立ててみましょう。';
+}
+
+function updateAnswerInputReadonlyState() {
+  if (!answerInput) return;
+  answerInput.readOnly = virtualKeyboardVisible && window.matchMedia('(max-width: 800px)').matches;
+}
+
+function syncVirtualKeyboardUi() {
+  if (!virtualKeyboard || !virtualKeyboardToggle) return;
+  virtualKeyboard.hidden = !virtualKeyboardVisible;
+  virtualKeyboardToggle.setAttribute('aria-expanded', virtualKeyboardVisible ? 'true' : 'false');
+  virtualKeyboardToggle.textContent = virtualKeyboardVisible ? '仮想キーボードを隠す' : '仮想キーボードを表示';
+  if (virtualKeyboardStatus) {
+    virtualKeyboardStatus.textContent = virtualKeyboardVisible
+      ? '仮想キーを押すと、ハングルが自動合成されて入力欄に入ります。'
+      : '端末に韓国語キーボードがなくても入力できます。';
+  }
+  updateAnswerInputReadonlyState();
+  if (virtualKeyboardVisible) {
+    renderVirtualKeyboard();
+  }
+}
+
+function renderVirtualKeyboard() {
+  if (!virtualKeyboard) return;
+  virtualKeyboard.innerHTML = '';
+  const rows = [
+    hangulKeyboardBaseRows[0].map((key) => ({ action: 'input', value: virtualKeyboardShift && hangulKeyboardShiftMap[key] ? hangulKeyboardShiftMap[key] : key })),
+    hangulKeyboardBaseRows[1].map((key) => ({ action: 'input', value: virtualKeyboardShift && hangulKeyboardShiftMap[key] ? hangulKeyboardShiftMap[key] : key })),
+    [
+      { action: 'shift', value: 'Shift', wide: true, active: virtualKeyboardShift },
+      ...hangulKeyboardBaseRows[2].map((key) => ({ action: 'input', value: virtualKeyboardShift && hangulKeyboardShiftMap[key] ? hangulKeyboardShiftMap[key] : key })),
+      { action: 'backspace', value: 'Backspace', wide: true },
+    ],
+    [{ action: 'space', value: 'Space', space: true }],
+  ];
+  rows.forEach((row) => {
+    const rowElement = document.createElement('div');
+    rowElement.className = 'virtual-keyboard__row';
+    row.forEach((key) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `virtual-keyboard__key${key.wide ? ' virtual-keyboard__key--wide' : ''}${key.space ? ' virtual-keyboard__key--space' : ''}${key.active ? ' is-active' : ''}`;
+      button.dataset.action = key.action;
+      button.dataset.value = key.value;
+      button.textContent = key.value;
+      rowElement.appendChild(button);
+    });
+    virtualKeyboard.appendChild(rowElement);
+  });
+}
+
+function focusAnswerField() {
+  if (!answerInput) return;
+  answerInput.focus({ preventScroll: true });
+}
+
+function insertVirtualKeyboardValue(value) {
+  if (!answerInput) return;
+  const Hangul = getHangulRuntime();
+  const start = answerInput.selectionStart ?? answerInput.value.length;
+  const end = answerInput.selectionEnd ?? start;
+  const prefix = answerInput.value.slice(0, start);
+  const suffix = answerInput.value.slice(end);
+  let nextPrefix = prefix;
+  if (value === ' ') {
+    nextPrefix = `${prefix} `;
+  } else if (Hangul) {
+    const disassembled = Hangul.disassemble(prefix);
+    disassembled.push(value);
+    nextPrefix = Hangul.assemble(disassembled);
+  } else {
+    nextPrefix = `${prefix}${value}`;
+  }
+  answerInput.value = `${nextPrefix}${suffix}`;
+  const caret = nextPrefix.length;
+  answerInput.setSelectionRange(caret, caret);
+  focusAnswerField();
+}
+
+function backspaceVirtualKeyboardValue() {
+  if (!answerInput) return;
+  const Hangul = getHangulRuntime();
+  const start = answerInput.selectionStart ?? answerInput.value.length;
+  const end = answerInput.selectionEnd ?? start;
+  if (start !== end) {
+    answerInput.value = `${answerInput.value.slice(0, start)}${answerInput.value.slice(end)}`;
+    answerInput.setSelectionRange(start, start);
+    focusAnswerField();
+    return;
+  }
+  const prefix = answerInput.value.slice(0, start);
+  const suffix = answerInput.value.slice(end);
+  if (!prefix) return;
+  let nextPrefix = prefix.slice(0, -1);
+  if (Hangul) {
+    const disassembled = Hangul.disassemble(prefix);
+    disassembled.pop();
+    nextPrefix = Hangul.assemble(disassembled);
+  }
+  answerInput.value = `${nextPrefix}${suffix}`;
+  const caret = nextPrefix.length;
+  answerInput.setSelectionRange(caret, caret);
+  focusAnswerField();
+}
+
+function jumpToGrammarPractice() {
+  if (practiceModeSelect) {
+    practiceModeSelect.value = 'grammar';
+  }
+  const defaultGrammar = getDefaultGrammar();
+  if (defaultGrammar) {
+    selectGrammar(defaultGrammar.id, { silent: true });
+  }
+  syncPracticeModeUi();
+  const practiceSection = document.getElementById('practice');
+  if (practiceSection) {
+    practiceSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  updateAiStatus('初級文法モードへ切り替えました。', false);
+}
 
 const fallbackGrammarMasterList = [
   {
@@ -247,7 +745,7 @@ function isPremiumEnabledForUser(user) {
 
 function setPracticeScreenReady(ready) {
   if (!practiceQuizPanel) return;
-  practiceQuizPanel.hidden = !ready;
+  practiceQuizPanel.hidden = !(ready || isHangulMode(getSelectedPracticeMode()));
 }
 
 function showSaveToPremiumStatus(message = '') {
@@ -262,8 +760,16 @@ function setSaveToPremiumButtonVisible(visible) {
 }
 
 function buildSolvedMemoryPayload({ question, userAnswer, correctedText, status, score }) {
-  const modeTag = currentPracticeMode === 'grammar' ? '文法別作文' : '翻訳作文';
-  const grammarTag = currentPracticeMode === 'grammar' ? (question?.targetGrammar || '') : '';
+  const modeTag = currentPracticeMode === 'grammar'
+    ? '文法別作文'
+    : currentPracticeMode === 'hangul'
+      ? 'ハングル入門'
+      : '翻訳作文';
+  const grammarTag = currentPracticeMode === 'grammar'
+    ? (question?.targetGrammar || '')
+    : currentPracticeMode === 'hangul'
+      ? (question?.support || '')
+      : '';
   const prompt = String(question?.prompt || '').trim();
   const model = String(correctedText || question?.answer || '').trim();
   const learner = String(userAnswer || '').trim();
@@ -493,6 +999,18 @@ async function handleGoogleCredentialResponse(response) {
     return;
   }
 
+  const redirectToAdminLogin = (adminLoginPath) => {
+    const targetPath = String(adminLoginPath || '').trim();
+    if (!targetPath) return false;
+    if (googleAuthStatus) {
+      googleAuthStatus.textContent = '管理者アカウントを確認しました。管理者専用ログイン画面へ移動します...';
+    }
+    setTimeout(() => {
+      window.location.href = targetPath;
+    }, 600);
+    return true;
+  };
+
   if (googleAuthStatus) googleAuthStatus.textContent = 'Googleログイン中...';
   try {
     const authResponse = await fetch('/api/auth/google', {
@@ -502,6 +1020,9 @@ async function handleGoogleCredentialResponse(response) {
     });
     const data = await authResponse.json().catch(() => ({}));
     if (!authResponse.ok) {
+      if (data.code === 'ADMIN_PASSWORD_LOGIN_REQUIRED' && redirectToAdminLogin(data.adminLoginPath)) {
+        return;
+      }
       if (googleAuthStatus) googleAuthStatus.textContent = data.error || 'Googleログインできませんでした。';
       return;
     }
@@ -555,12 +1076,17 @@ async function initGoogleSignIn() {
 }
 
 function getPracticeModeLabel() {
-  return getSelectedPracticeMode() === 'grammar' ? '文法別練習モード' : '日本語→韓国語モード';
+  const mode = getSelectedPracticeMode();
+  if (mode === 'hangul') return 'ハングル入門モード';
+  if (mode === 'grammar') return '文法別練習モード';
+  return '日本語→韓国語モード';
 }
 
 function getSelectedPracticeMode() {
   const mode = String(practiceModeSelect?.value || '').trim();
-  return mode === 'grammar' ? 'grammar' : 'translation';
+  if (mode === 'hangul') return 'hangul';
+  if (mode === 'grammar') return 'grammar';
+  return 'translation';
 }
 
 function getSessionQuestionCount(requestedCount) {
@@ -824,27 +1350,52 @@ function syncPracticeModeUi() {
   if (grammarSetting) {
     grammarSetting.hidden = mode !== 'grammar';
   }
+  if (hangulDashboard) {
+    hangulDashboard.hidden = mode !== 'hangul';
+  }
+  if (mode === 'hangul' && !virtualKeyboardInitialized) {
+    virtualKeyboardVisible = true;
+    virtualKeyboardInitialized = true;
+  }
 
   if (answerInput) {
-    answerInput.placeholder = mode === 'grammar'
-      ? '例: 한국에 가서 삼겹살을 먹고 싶어요.'
-      : '例: 저는 오늘 친구를 만나요.';
+    answerInput.placeholder = mode === 'hangul'
+      ? '例: 가 / 사랑 / 사과예요'
+      : mode === 'grammar'
+        ? '例: 한국에 가서 삼겹살을 먹고 싶어요.'
+        : '例: 저는 오늘 친구를 만나요.';
   }
 
   if (promptLabel && currentQuestions.length === 0) {
-    promptLabel.textContent = '日本語のお題';
+    promptLabel.textContent = mode === 'hangul' ? 'ハングル課題' : '日本語のお題';
   }
 
   if (practiceHints[0]) {
-    practiceHints[0].textContent = mode === 'grammar'
-      ? '文法の型を意識し、必ず指定文法を含めて作文してください。'
-      : '日本語の意味を自然な韓国語に置き換えて作文してください。';
+    practiceHints[0].textContent = mode === 'hangul'
+      ? '子音 + 母音 + パッチムの形を見ながら、まずは単語と短いフレーズを入力してください。'
+      : mode === 'grammar'
+        ? '文法の型を意識し、必ず指定文法を含めて作文してください。'
+        : '日本語の意味を自然な韓国語に置き換えて作文してください。';
   }
 
   if (practiceHints[1]) {
-    practiceHints[1].textContent = mode === 'grammar'
-      ? '採点では「指定文法を正しく使えたか」が必ず評価されます。'
-      : '採点では語順・助詞・語尾の自然さが評価されます。';
+    practiceHints[1].textContent = mode === 'hangul'
+      ? '仮想キーボードをONにすると、端末側の韓国語キーボードがなくても入力できます。'
+      : mode === 'grammar'
+        ? '採点では「指定文法を正しく使えたか」が必ず評価されます。'
+        : '採点では語順・助詞・語尾の自然さが評価されます。';
+  }
+
+  if (practiceHints[2]) {
+    practiceHints[2].textContent = mode === 'hangul'
+      ? 'カードで音を確認し、AIハングル解剖で単語を分解してからドリルに進むのがおすすめです。'
+      : 'ハングル入力モードに切り替えて入力するとスムーズです。';
+  }
+
+  if (practiceHints[3]) {
+    practiceHints[3].textContent = mode === 'hangul'
+      ? '単語・2語フレーズに慣れたら「初級文法へ進む」で作文に接続できます。'
+      : '音声読み上げボタンは、回答後に使えます。';
   }
 
   if (targetGrammarBanner) {
@@ -855,14 +1406,21 @@ function syncPracticeModeUi() {
     const selected = getSelectedGrammar();
     grammarSelectionStatus.textContent = mode === 'grammar'
       ? (selected ? `${selected.grammar} を選択中` : '文法を選択してください')
-      : '日本語→韓国語モードでは文法選択は任意です';
+      : mode === 'hangul'
+        ? 'ハングル入門では文法選択は不要です'
+        : '日本語→韓国語モードでは文法選択は任意です';
   }
 
   if (currentQuestions.length === 0 && promptText) {
-    promptText.textContent = mode === 'grammar'
-      ? '文法を選んで「セッション開始」を押してください。'
-      : '「セッション開始」を押して翻訳問題を始めてください。';
+    promptText.textContent = mode === 'hangul'
+      ? '「セッション開始」を押してハングル入門ドリルを始めてください。'
+      : mode === 'grammar'
+        ? '文法を選んで「セッション開始」を押してください。'
+        : '「セッション開始」を押して翻訳問題を始めてください。';
   }
+
+  syncVirtualKeyboardUi();
+  setPracticeScreenReady(currentQuestions.length > 0);
 }
 
 async function applyPracticeQueryParams() {
@@ -873,7 +1431,7 @@ async function applyPracticeQueryParams() {
   const autostart = params.get('autostart');
 
   if (practiceModeSelect) {
-    practiceModeSelect.value = mode === 'grammar' ? 'grammar' : 'translation';
+    practiceModeSelect.value = ['hangul', 'grammar', 'translation'].includes(mode) ? mode : 'translation';
   }
 
   if (levelSelect && ['beginner', 'intermediate', 'advanced'].includes(level)) {
@@ -1211,7 +1769,7 @@ async function loadPremiumMemories() {
     if (premiumCheckoutBtn) {
       premiumCheckoutBtn.hidden = false;
       premiumCheckoutBtn.disabled = false;
-      premiumCheckoutBtn.textContent = '有料プランに登録する (月額 480円)';
+      premiumCheckoutBtn.textContent = '有料プランに登録する (月額 980円)';
     }
     return;
   }
@@ -1224,7 +1782,7 @@ async function loadPremiumMemories() {
   if (premiumCheckoutBtn) {
     premiumCheckoutBtn.hidden = premiumEnabled;
     premiumCheckoutBtn.disabled = false;
-    premiumCheckoutBtn.textContent = '有料プランに登録する (月額 480円)';
+    premiumCheckoutBtn.textContent = '有料プランに登録する (月額 980円)';
   }
   if (!premiumEnabled) {
     resetPremiumEditorState();
@@ -1282,7 +1840,7 @@ async function startPremiumCheckout() {
       premiumStatus.textContent = data.error || '決済ページの作成に失敗しました。';
       if (premiumCheckoutBtn) {
         premiumCheckoutBtn.disabled = false;
-        premiumCheckoutBtn.textContent = '有料プランに登録する (月額 480円)';
+        premiumCheckoutBtn.textContent = '有料プランに登録する (月額 980円)';
       }
       return;
     }
@@ -1292,7 +1850,7 @@ async function startPremiumCheckout() {
     premiumStatus.textContent = '決済ページへの移動中にエラーが発生しました。';
     if (premiumCheckoutBtn) {
       premiumCheckoutBtn.disabled = false;
-      premiumCheckoutBtn.textContent = '有料プランに登録する (月額 480円)';
+      premiumCheckoutBtn.textContent = '有料プランに登録する (月額 980円)';
     }
   }
 }
@@ -1838,6 +2396,23 @@ function isCurrentUserPremium() {
 
 async function startSession() {
   currentPracticeMode = getSelectedPracticeMode();
+  if (currentPracticeMode === 'hangul') {
+    const count = getSessionQuestionCount(questionCountSelect.value);
+    currentLevel = 'beginner';
+    currentQuestions = buildHangulSessionQuestions(count);
+    currentIndex = 0;
+    sessionWrongQuestions = [];
+    feedbackBox.hidden = true;
+    if (sessionResultBox) sessionResultBox.hidden = true;
+    hintBox.hidden = true;
+    if (followUpBox) followUpBox.hidden = true;
+    clearChatTranscript();
+    answerInput.value = '';
+    setPracticeScreenReady(true);
+    showQuestion();
+    updateAiStatus('ハングル入門ドリルを開始しました。', true);
+    return;
+  }
   const selectedGrammar = currentPracticeMode === 'grammar' ? getSelectedGrammar() : null;
   currentLevel = currentPracticeMode === 'grammar'
     ? (selectedGrammar?.level || levelSelect.value)
@@ -1998,8 +2573,8 @@ function showQuestion() {
   }
 
   if (scenarioText) {
-    scenarioText.hidden = true;
-    scenarioText.textContent = '';
+    scenarioText.hidden = !isHangulMode() || !(question.support || question.hint);
+    scenarioText.textContent = isHangulMode() ? `${question.support || ''}${question.romanization ? ` / 発音の目安: ${question.romanization}` : ''}` : '';
   }
   promptText.textContent = question.prompt || '日本語のお題を表示できませんでした。';
 
@@ -2010,10 +2585,10 @@ function showQuestion() {
   }
 
   if (promptLabel) {
-    promptLabel.textContent = '日本語のお題';
+    promptLabel.textContent = isHangulMode() ? getHangulPromptLabel(question) : '日本語のお題';
   }
   if (nextBtn) {
-    nextBtn.textContent = '次の問題へ';
+    nextBtn.textContent = isHangulMode() ? '次のドリルへ' : '次の問題へ';
   }
 
   if (targetGrammarBanner && targetGrammarLabel) {
@@ -2027,13 +2602,13 @@ function showQuestion() {
   }
 
   progressBadge.textContent = `${currentIndex + 1} / ${currentQuestions.length}`;
-  levelBadge.textContent = getLevelLabel(currentLevel);
+  levelBadge.textContent = isHangulMode() ? 'ハングル入門' : getLevelLabel(currentLevel);
   hintBox.hidden = true;
   feedbackBox.hidden = true;
   if (sessionResultBox) sessionResultBox.hidden = true;
   if (followUpBox) followUpBox.hidden = true;
   if (firstQuestionGuide) {
-    firstQuestionGuide.hidden = currentIndex !== 0;
+    firstQuestionGuide.hidden = isHangulMode() || currentIndex !== 0;
   }
   pendingSolvedMemoryPayload = null;
   pendingSolvedMemorySaved = false;
@@ -2044,6 +2619,7 @@ function showQuestion() {
     saveToPremiumBtn.textContent = 'マイ作文集に追加';
   }
   answerInput.value = '';
+  answerInput.placeholder = isHangulMode() ? getHangulInputPlaceholder(question) : answerInput.placeholder;
   answerInput.focus();
 }
 
@@ -2115,6 +2691,11 @@ function containsLongEnglish(text) {
 function showHint() {
   const question = currentQuestions[currentIndex];
   if (!question) return;
+  if (isHangulMode()) {
+    hintBox.hidden = false;
+    hintBox.textContent = `ヒント: ${question.hint}\nキー順: ${getHangulKeySequence(question.answer)}`;
+    return;
+  }
   const importantWords = String(question.answer || '')
     .split(/\s+/)
     .map((word) => word.trim().replace(/[.,!?]/g, ''))
@@ -2126,6 +2707,81 @@ function showHint() {
   hintBox.textContent = importantWords.length
     ? `ヒント: ${question.hint}\n重要単語: ${importantWords.join(', ')}`
     : `ヒント: ${question.hint}`;
+}
+
+async function evaluateHangulAnswer(question) {
+  const userAnswer = answerInput.value.trim();
+  const normalizedUser = normalizeHangulInput(userAnswer).replace(/\s+/g, '');
+  const normalizedExpected = normalizeHangulInput(question.answer).replace(/\s+/g, '');
+  const userKeys = getHangulKeySequence(normalizedUser).replace(/\s+/g, '');
+  const expectedKeys = getHangulKeySequence(normalizedExpected).replace(/\s+/g, '');
+  const similarity = similarityRatio(userKeys, expectedKeys);
+  let status = '不正解';
+  let score = 38;
+  if (normalizedUser && normalizedUser === normalizedExpected) {
+    status = '正解';
+    score = 100;
+  } else if (normalizedUser && similarity >= 0.72) {
+    status = '惜しい';
+    score = 78;
+  }
+
+  const feedback = getHangulFeedbackMessage(question.type, status);
+  const correctedText = question.answer;
+  const breakdownSummary = buildHangulBreakdownSummary(correctedText);
+  const alternativesList = [question.support, question.romanization ? `発音目安: ${question.romanization}` : '', `キー順: ${getHangulKeySequence(correctedText)}`].filter(Boolean);
+
+  normalizeProgressState();
+  const todayKey = getTodayKey();
+  progressState.attempted += 1;
+  progressState.todaySolved += 1;
+  progressState.dailyHistory[todayKey] = (progressState.dailyHistory[todayKey] || 0) + 1;
+  registerPracticeDay(todayKey);
+  if (status === '正解') {
+    progressState.correct += 1;
+    progressState.todayCorrect += 1;
+    progressState.streak += 1;
+  } else {
+    progressState.streak = 0;
+    if (!sessionWrongQuestions.some((item) => item.prompt === question.prompt)) {
+      sessionWrongQuestions.push(question);
+    }
+  }
+  addReviewItem(question, status);
+  saveProgress();
+  updateProgressUI();
+
+  feedbackStatus.textContent = status;
+  feedbackStatus.className = `feedback-status ${statusClassFromStatus(status)}`;
+  feedbackText.textContent = `採点: ${score}点`;
+  modelAnswerBox.innerHTML = `<strong>正解</strong><div>${correctedText}</div>`;
+  feedbackExplanation.textContent = `${feedback}\n\n文字分解: ${breakdownSummary}\n\n${question.hint}`;
+  alternatives.innerHTML = '';
+  alternativesList.forEach((item) => {
+    const chip = document.createElement('span');
+    chip.textContent = item;
+    alternatives.appendChild(chip);
+  });
+  if (isPremiumEnabledForUser(currentSessionUser)) {
+    pendingSolvedMemoryPayload = buildSolvedMemoryPayload({
+      question,
+      userAnswer,
+      correctedText,
+      status,
+      score,
+    });
+    pendingSolvedMemorySaved = false;
+    setSaveToPremiumButtonVisible(true);
+    if (saveToPremiumBtn) {
+      saveToPremiumBtn.disabled = false;
+      saveToPremiumBtn.textContent = 'マイ作文集に追加';
+    }
+    showSaveToPremiumStatus('');
+  } else {
+    setSaveToPremiumButtonVisible(false);
+    showSaveToPremiumStatus('');
+  }
+  feedbackBox.hidden = false;
 }
 
 async function autoSaveGrammarMistakeLog(question, userAnswer, correctedText, status, grammarUsed, score) {
@@ -2172,6 +2828,11 @@ async function autoSaveGrammarMistakeLog(question, userAnswer, correctedText, st
 async function evaluateAnswer() {
   const question = currentQuestions[currentIndex];
   if (!question) return;
+
+  if (isHangulMode()) {
+    await evaluateHangulAnswer(question);
+    return;
+  }
 
   const userAnswer = answerInput.value.trim();
   const normalizedUser = normalizeForJudgement(userAnswer);
@@ -2389,11 +3050,12 @@ function goToNextQuestion() {
     const total = currentQuestions.length;
     const wrong = sessionWrongQuestions.length;
     const correct = total - wrong;
+    const unitLabel = isHangulMode() ? 'ドリル' : '問';
     promptText.textContent = 'お疲れさまでした。セットが完了しました。';
     progressBadge.textContent = `${currentQuestions.length} / ${currentQuestions.length}`;
     feedbackBox.hidden = true;
     if (sessionResultText) {
-      sessionResultText.textContent = `${total}問中${correct}問正解でした。${wrong ? ` 間違えた${wrong}問を再挑戦できます。` : ' 全問正解です。'}`;
+      sessionResultText.textContent = `${total}${unitLabel}中${correct}${unitLabel}正解でした。${wrong ? ` 間違えた${wrong}${unitLabel}を再挑戦できます。` : ' 全問正解です。'}`;
     }
     if (retryWrongBtn) {
       const premiumEnabled = isCurrentUserPremium();
@@ -2550,6 +3212,74 @@ if (premiumCheckoutBtn) {
   premiumCheckoutBtn.addEventListener('click', startPremiumCheckout);
 }
 
+if (virtualKeyboardToggle) {
+  virtualKeyboardToggle.addEventListener('click', () => {
+    virtualKeyboardVisible = !virtualKeyboardVisible;
+    syncVirtualKeyboardUi();
+  });
+}
+
+if (virtualKeyboard) {
+  virtualKeyboard.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+    const action = button.dataset.action;
+    const value = button.dataset.value || '';
+    if (action === 'shift') {
+      virtualKeyboardShift = !virtualKeyboardShift;
+      renderVirtualKeyboard();
+      return;
+    }
+    if (action === 'backspace') {
+      backspaceVirtualKeyboardValue();
+      return;
+    }
+    if (action === 'space') {
+      insertVirtualKeyboardValue(' ');
+      return;
+    }
+    insertVirtualKeyboardValue(value);
+    if (virtualKeyboardShift) {
+      virtualKeyboardShift = false;
+      renderVirtualKeyboard();
+    }
+  });
+}
+
+if (hangulJumpGrammarBtn) {
+  hangulJumpGrammarBtn.addEventListener('click', jumpToGrammarPractice);
+}
+
+if (hangulAnalyzeBtn) {
+  hangulAnalyzeBtn.addEventListener('click', analyzeHangulInput);
+}
+
+if (hangulAnalyzerInput) {
+  hangulAnalyzerInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      analyzeHangulInput();
+    }
+  });
+}
+
+if (hangulAnalyzerExamples) {
+  hangulAnalyzerExamples.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-sample]');
+    if (!button || !hangulAnalyzerInput) return;
+    hangulAnalyzerInput.value = button.dataset.sample || '';
+    analyzeHangulInput();
+  });
+}
+
+if (hangulMatrix) {
+  hangulMatrix.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-syllable]');
+    if (!button) return;
+    speakHangulSnippet(button.dataset.syllable || '');
+  });
+}
+
 if (answerInput) {
   answerInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -2566,6 +3296,8 @@ if (retryWrongBtn) {
 if (restartSessionBtn) {
   restartSessionBtn.addEventListener('click', startSession);
 }
+
+window.addEventListener('resize', updateAnswerInputReadonlyState);
 
 if (topLogoutBtn) {
   topLogoutBtn.addEventListener('click', async () => {
@@ -2587,6 +3319,10 @@ if (topLogoutBtn) {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  renderHangulMatrix();
+  renderHangulBatchimCards();
+  renderHangulAnalyzerExamples();
+  renderHangulAnalysisResult(buildLocalHangulAnalysis('사랑'));
   refreshKoreanVoices();
   if ('speechSynthesis' in window) {
     window.speechSynthesis.onvoiceschanged = refreshKoreanVoices;
@@ -2615,4 +3351,5 @@ window.addEventListener('DOMContentLoaded', () => {
   updateAiStatus('AI接続状態を確認しています...', false);
   setPracticeScreenReady(false);
   applyPracticeQueryParams();
+  syncVirtualKeyboardUi();
 });

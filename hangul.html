@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ハングル入門｜ひたすら韓国語作文</title>
+    <meta name="description" content="韓国語学習者向けのハングル入門ページです。文字と発音カード、仮想キーボード、聞き取りと書き取りのドリルで基礎を固められます。" />
+    <link rel="canonical" href="https://korean-sakubun.onrender.com/hangul" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="shortcut icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/KoreanSakubunLogo.png" />
+    <meta property="og:title" content="ハングル入門｜ひたすら韓国語作文" />
+    <meta property="og:description" content="ハングルを見て、聞いて、入力して覚えるための専用ページです。" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://korean-sakubun.onrender.com/hangul" />
+    <meta property="og:image" content="https://korean-sakubun.onrender.com/KoreanSakubunLogo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ハングル入門｜ひたすら韓国語作文" />
+    <meta name="twitter:description" content="韓国語の文字と発音、入力をまとめて練習できる専用ページです。" />
+    <meta name="twitter:image" content="https://korean-sakubun.onrender.com/KoreanSakubunLogo.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="hero hero--compact hangul-page-hero">
+      <nav class="topbar" aria-label="サイトナビゲーション">
+        <a class="brand" href="/">
+          <img src="KoreanSakubunLogo.png" alt="" class="brand__logo" loading="lazy" />
+          <span>ひたすら韓国語作文</span>
+        </a>
+        <div class="topbar__links">
+          <a href="/">ホーム</a>
+          <a href="#hangulCards">文字と発音</a>
+          <a href="#hangulDrill">入力ドリル</a>
+          <a href="#hangulAnalysis">ハングル解剖</a>
+          <a href="/premium.html">有料プラン</a>
+        </div>
+      </nav>
+      <div class="hero__content">
+        <div class="hero__intro">
+          <p class="eyebrow">Hangul Starter</p>
+          <h1>ハングル入門</h1>
+          <p class="hero__lead">文字を見て、音を聞いて、キー位置を覚えながら入力するための専用ページです。</p>
+          <div class="hero__actions">
+            <a href="#hangulDrill" class="btn btn--primary">入力ドリルを始める</a>
+            <a href="#hangulCards" class="btn btn--secondary">文字カードを見る</a>
+            <a href="/?mode=grammar" class="btn btn--secondary">文法別作文へ進む</a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section id="hangulCards" class="section">
+        <div class="hangul-dashboard__section">
+          <div class="panel__head">
+            <div>
+              <h2>文字と発音カード</h2>
+              <p class="panel__hint">子音と母音をタップして、音と形をセットで覚えます。</p>
+            </div>
+          </div>
+          <div id="hangulMatrix" class="hangul-matrix" aria-live="polite"></div>
+          <p id="hangulMatrixStatus" class="panel__hint">カードをタップすると、ブラウザの韓国語音声で再生します。</p>
+        </div>
+      </section>
+
+      <section id="hangulDrill" class="section practice-section hangul-practice-layout">
+        <div class="panel panel--control">
+          <h2>入力ドリル</h2>
+          <p class="panel__hint">表示されたハングルを見て、そのまま入力してください。PCでは英字キーを押すと、韓国語2ボル式の位置で仮想キーボードも反応します。</p>
+          <label>
+            問題数
+            <select id="hangulQuestionCountSelect">
+              <option value="5">5問</option>
+              <option value="8">8問</option>
+              <option value="10">10問</option>
+            </select>
+          </label>
+          <div class="button-stack">
+            <button id="hangulStartBtn" class="btn btn--primary" type="button">ドリル開始</button>
+          </div>
+          <p id="hangulSessionStatus" class="session-status">準備ができたら開始してください。</p>
+          <p class="panel__hint">入力は仮想キーボードのクリックでも、物理キーボードでもできます。</p>
+        </div>
+
+        <div class="panel panel--quiz">
+          <div class="quiz__header">
+            <span id="hangulProgressBadge" class="badge">0 / 0</span>
+            <span class="badge badge--soft">ハングル入門</span>
+          </div>
+          <p id="hangulScenarioText" class="panel__hint" hidden></p>
+          <p class="prompt-label">ハングル課題</p>
+          <h3 id="hangulPromptText">「ドリル開始」を押してハングル入力を始めてください。</h3>
+          <div class="actions-row hangul-audio-actions">
+            <button id="hangulPromptAudioBtn" class="btn btn--secondary" type="button">お題の音声を聞く</button>
+          </div>
+
+          <label class="input-label" for="hangulAnswerInput">見本どおりに入力する</label>
+          <textarea id="hangulAnswerInput" rows="4" placeholder="例: 사랑"></textarea>
+          <div class="keyboard-toolbar">
+            <button id="virtualKeyboardToggle" class="btn btn--secondary btn--small" type="button" aria-expanded="false">仮想キーボードを表示</button>
+            <span id="virtualKeyboardStatus" class="panel__hint">端末に韓国語キーボードがなくても入力できます。</span>
+          </div>
+          <div id="virtualKeyboard" class="virtual-keyboard" hidden></div>
+
+          <div class="actions-row">
+            <button id="hangulHintBtn" class="btn btn--secondary" type="button">ヒントを見る</button>
+            <button id="hangulSubmitBtn" class="btn btn--primary" type="button">回答を送信</button>
+          </div>
+
+          <div id="hangulHintBox" class="hint-box" hidden></div>
+          <div id="hangulFeedbackBox" class="feedback-box" hidden>
+            <h4>フィードバック</h4>
+            <p id="hangulFeedbackStatus" class="feedback-status"></p>
+            <p id="hangulFeedbackText"></p>
+            <div id="hangulModelAnswerBox" class="model-answer-box"></div>
+            <p id="hangulFeedbackExplanation"></p>
+            <div id="hangulAlternatives" class="alternatives"></div>
+            <div class="actions-row">
+              <button id="hangulSpeakBtn" class="btn btn--secondary" type="button">音声で聞く</button>
+              <button id="hangulNextBtn" class="btn btn--secondary" type="button">次のドリルへ</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="hangulBatchim" class="section">
+        <div class="hangul-subpanel">
+          <h2>パッチムの見方</h2>
+          <div id="hangulBatchimCards" class="hangul-batchim-grid"></div>
+        </div>
+      </section>
+
+      <section id="hangulAnalysis" class="section">
+        <div class="hangul-subpanel">
+          <h2>AIハングル解剖</h2>
+          <p class="panel__hint">K-POP・ドラマ単語や、見本で出てきた単語を入れて1文字ずつ見てみましょう。</p>
+          <div id="hangulAnalyzerExamples" class="hangul-analyzer__examples"></div>
+          <label for="hangulAnalyzerInput">単語・名前</label>
+          <div class="hangul-analyzer__controls">
+            <input id="hangulAnalyzerInput" maxlength="48" placeholder="例: 사랑 / 한글 / 삼겹살" />
+            <button id="hangulAnalyzeBtn" class="btn btn--secondary" type="button">解剖する</button>
+          </div>
+          <div id="hangulAnalyzerResult" class="hangul-analysis-result" hidden></div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="hangul-journey">
+          <h2>ハングルから作文へ進む3ステップ</h2>
+          <div class="hangul-journey__grid">
+            <article class="hangul-journey__card">
+              <span class="badge badge--soft">STEP 1</span>
+              <h4>ハングルモード</h4>
+              <p>文字の読み書き、単語入力、分解を無料で練習します。</p>
+            </article>
+            <article class="hangul-journey__card">
+              <span class="badge badge--soft">STEP 2</span>
+              <h4>文法別作文</h4>
+              <p>~이에요/예요 などの初級文法に切り替えて、短文作文へ進みます。</p>
+            </article>
+            <article class="hangul-journey__card hangul-journey__card--premium">
+              <span class="badge">STEP 3</span>
+              <h4>マイ文章庫 &amp; SRS復習</h4>
+              <p>覚えた単語やフレーズを保存し、毎日復習して定着させます。</p>
+            </article>
+          </div>
+          <div class="actions-row">
+            <a href="/?mode=grammar" class="btn btn--primary">初級文法へ進む</a>
+            <a href="/premium.html" class="btn btn--secondary">有料プランを見る</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>ひたすら韓国語作文 — ハングル入門</p>
+    </footer>
+
+    <script src="/vendor/hangul-js/hangul.min.js"></script>
+    <script src="hangul.js"></script>
+  </body>
+</html>

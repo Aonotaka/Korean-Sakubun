@@ -471,7 +471,7 @@ async function loadPremiumMemories() {
     if (premiumCheckoutBtn) {
       premiumCheckoutBtn.hidden = false;
       premiumCheckoutBtn.disabled = false;
-      premiumCheckoutBtn.textContent = '有料プランに登録する (月額 480円)';
+      premiumCheckoutBtn.textContent = '有料プランに登録する (月額 980円)';
     }
     return;
   }
@@ -484,7 +484,7 @@ async function loadPremiumMemories() {
   if (premiumCheckoutBtn) {
     premiumCheckoutBtn.hidden = premiumEnabled;
     premiumCheckoutBtn.disabled = false;
-    premiumCheckoutBtn.textContent = '有料プランに登録する (月額 480円)';
+    premiumCheckoutBtn.textContent = '有料プランに登録する (月額 980円)';
   }
 
   if (!premiumEnabled) {
@@ -549,7 +549,7 @@ async function startPremiumCheckout() {
       premiumStatus.textContent = data.error || '決済ページの作成に失敗しました。';
       if (premiumCheckoutBtn) {
         premiumCheckoutBtn.disabled = false;
-        premiumCheckoutBtn.textContent = '有料プランに登録する (月額 480円)';
+        premiumCheckoutBtn.textContent = '有料プランに登録する (月額 980円)';
       }
       return;
     }
@@ -559,7 +559,7 @@ async function startPremiumCheckout() {
     premiumStatus.textContent = '決済ページへの移動中にエラーが発生しました。';
     if (premiumCheckoutBtn) {
       premiumCheckoutBtn.disabled = false;
-      premiumCheckoutBtn.textContent = '有料プランに登録する (月額 480円)';
+      premiumCheckoutBtn.textContent = '有料プランに登録する (月額 980円)';
     }
   }
 }

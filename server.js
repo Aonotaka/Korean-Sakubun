@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const Hangul = require('hangul-js');
 const Stripe = require('stripe');
 const { askAi, getProvider } = require('./services/ai');
 const { validateRegistrationInput } = require('./services/validation');
@@ -420,6 +421,100 @@ async function verifyGoogleIdToken(idToken) {
   }
 }
 
+function getHangulRomanizationMap() {
+  return {
+    'ㄱ': 'g/k',
+    'ㄲ': 'kk',
+    'ㄴ': 'n',
+    'ㄷ': 'd/t',
+    'ㄸ': 'tt',
+    'ㄹ': 'r/l',
+    'ㅁ': 'm',
+    'ㅂ': 'b/p',
+    'ㅃ': 'pp',
+    'ㅅ': 's',
+    'ㅆ': 'ss',
+    'ㅇ': 'silent/ng',
+    'ㅈ': 'j',
+    'ㅉ': 'jj',
+    'ㅊ': 'ch',
+    'ㅋ': 'k',
+    'ㅌ': 't',
+    'ㅍ': 'p',
+    'ㅎ': 'h',
+    'ㅏ': 'a',
+    'ㅐ': 'ae',
+    'ㅑ': 'ya',
+    'ㅒ': 'yae',
+    'ㅓ': 'eo',
+    'ㅔ': 'e',
+    'ㅕ': 'yeo',
+    'ㅖ': 'ye',
+    'ㅗ': 'o',
+    'ㅘ': 'wa',
+    'ㅙ': 'wae',
+    'ㅚ': 'oe',
+    'ㅛ': 'yo',
+    'ㅜ': 'u',
+    'ㅝ': 'wo',
+    'ㅞ': 'we',
+    'ㅟ': 'wi',
+    'ㅠ': 'yu',
+    'ㅡ': 'eu',
+    'ㅢ': 'ui',
+    'ㅣ': 'i',
+  };
+}
+
+function buildHangulBreakdown(text) {
+  const value = String(text || '').trim();
+  const romanMap = getHangulRomanizationMap();
+
+  return Array.from(value).map((character) => {
+    const jamo = Hangul.disassemble(character);
+    const filtered = (Array.isArray(jamo) ? jamo : []).filter((unit) => /[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(unit));
+    const structure = filtered.length >= 3
+      ? '子音 + 母音 + パッチム'
+      : filtered.length === 2
+        ? '子音 + 母音'
+        : '単独文字';
+
+    return {
+      syllable: character,
+      jamo: filtered,
+      romanized: filtered.map((unit) => `${unit}(${romanMap[unit] || unit})`),
+      structure,
+    };
+  }).filter((item) => item.jamo.length);
+}
+
+function getHangulAnalysisFallback(text) {
+  const input = String(text || '').trim().slice(0, 48);
+  const containsHangul = /[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(input);
+  const normalized = containsHangul ? Hangul.assemble(Hangul.disassemble(input)) : input;
+  const breakdown = buildHangulBreakdown(normalized);
+  const keySequence = containsHangul ? Hangul.disassemble(normalized).join(' ') : '';
+
+  return {
+    input,
+    convertedText: normalized,
+    meaning: containsHangul
+      ? '入力されたハングルを1文字ずつ分解して学べます。'
+      : 'AI接続時は、日本語やローマ字から自然なハングル表記の提案も行います。',
+    pronunciationTip: containsHangul
+      ? '子音と母音のまとまりごとに、ゆっくり音読してから単語全体を続けて読んでみましょう。'
+      : '名前は読みをひらがな・カタカナで入れると、AIがハングル候補を提案しやすくなります。',
+    writingTip: containsHangul
+      ? '左から右、上から下の順で、1音節ずつまとまりで書くと覚えやすくなります。'
+      : 'まず読みを確認してから、子音 + 母音の形に分けて練習すると定着しやすくなります。',
+    studyTip: containsHangul
+      ? 'この単語を仮想キーボードで3回入力し、パッチムの有無を意識してみましょう。'
+      : 'AIが使えない環境では、まずハングル単語を入力して文字分解モードとして活用してください。',
+    breakdown,
+    keySequence,
+  };
+}
+
 function readJson(filePath, fallback) {
   try {
     if (!fs.existsSync(filePath)) {
@@ -460,6 +555,12 @@ function writeJson(filePath, data) {
 
     throw error;
   }
+}
+
+function withAsync(handler) {
+  return (req, res, next) => {
+    Promise.resolve(handler(req, res, next)).catch(next);
+  };
 }
 
 function maskEmail(email) {
@@ -1759,7 +1860,7 @@ ensureSeedData();
 loadSessionsFromDisk();
 logStartupSummary();
 
-app.post('/api/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+app.post('/api/webhook/stripe', express.raw({ type: 'application/json' }), withAsync(async (req, res) => {
   if (!stripeClient) {
     return res.status(503).json({ error: 'Stripe is not configured' });
   }
@@ -1854,7 +1955,7 @@ app.post('/api/webhook/stripe', express.raw({ type: 'application/json' }), async
   }
 
   return res.json({ received: true });
-});
+}));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -1876,6 +1977,7 @@ app.use((req, res, next) => {
   return next();
 });
 
+app.use('/vendor/hangul-js', express.static(path.join(__dirname, 'node_modules/hangul-js')));
 app.use(express.static(path.join(__dirname)));
 
 app.get('/', (_req, res) => {
@@ -1888,6 +1990,14 @@ app.get('/login', (_req, res) => {
 
 app.get('/login.html', (_req, res) => {
   res.sendFile(path.join(__dirname, 'login.html'));
+});
+
+app.get('/hangul', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'hangul.html'));
+});
+
+app.get('/hangul.html', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'hangul.html'));
 });
 
 const ADMIN_SECRET_PATH = process.env.ADMIN_SECRET_PATH || '/korean-admin-secret';
@@ -1936,11 +2046,57 @@ app.get('/api/auth/google/config', (_req, res) => {
   });
 });
 
+app.post('/api/hangul/analyze', withAsync(async (req, res) => {
+  const input = String(req.body?.text || '').trim().slice(0, 48);
+  if (!input) {
+    return res.status(400).json({ error: '単語または名前を入力してください' });
+  }
+
+  const fallback = getHangulAnalysisFallback(input);
+  const hasAiKey = Boolean(process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY);
+
+  if (!hasAiKey) {
+    return res.json({ ...fallback, usedAi: false });
+  }
+
+  const aiResult = await askAi({
+    provider: getProvider(),
+    systemPrompt: [
+      'You are a Korean tutor for Japanese beginners.',
+      'Return valid JSON only.',
+      'If the input is already Hangul, keep it in convertedText.',
+      'If the input is Japanese or roman letters, propose the most natural Hangul spelling for a beginner-friendly phonetic rendering.',
+      'Fields: convertedText, meaning, pronunciationTip, writingTip, studyTip.',
+      'All explanation text must be in Japanese and concise.',
+    ].join(' '),
+    userPrompt: JSON.stringify({
+      input,
+      fallback,
+    }),
+    temperature: 0.2,
+  });
+
+  const convertedText = String(aiResult?.convertedText || fallback.convertedText || input).trim().slice(0, 48);
+  const normalized = getHangulAnalysisFallback(convertedText);
+
+  return res.json({
+    input,
+    convertedText,
+    meaning: String(aiResult?.meaning || normalized.meaning || '').trim(),
+    pronunciationTip: String(aiResult?.pronunciationTip || normalized.pronunciationTip || '').trim(),
+    writingTip: String(aiResult?.writingTip || normalized.writingTip || '').trim(),
+    studyTip: String(aiResult?.studyTip || normalized.studyTip || '').trim(),
+    breakdown: normalized.breakdown,
+    keySequence: normalized.keySequence,
+    usedAi: Boolean(aiResult),
+  });
+}));
+
 app.get('/api/grammar/list', (_req, res) => {
   res.json(grammarMasterList);
 });
 
-app.post('/api/stripe/create-checkout-session', async (req, res) => {
+app.post('/api/stripe/create-checkout-session', withAsync(async (req, res) => {
   const user = getSessionUser(req);
   if (!user) {
     return res.status(401).json({ error: 'ログインが必要です' });
@@ -1990,7 +2146,7 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
     console.error('Failed to create Stripe checkout session:', error.message);
     return res.status(500).json({ error: '決済ページの作成に失敗しました' });
   }
-});
+}));
 
 app.post('/api/auth/register', (req, res) => {
   return res.status(403).json({ error: 'ユーザー登録はGoogleログインをご利用ください' });
@@ -2045,7 +2201,7 @@ app.post('/api/auth/login', (req, res) => {
   });
 });
 
-app.post('/api/auth/google', async (req, res) => {
+app.post('/api/auth/google', withAsync(async (req, res) => {
   const credential = String(req.body?.credential || '').trim();
   if (!credential) {
     return res.status(400).json({ error: 'Google認証情報がありません' });
@@ -2082,7 +2238,11 @@ app.post('/api/auth/google', async (req, res) => {
     || null;
 
   if (user && user.role === 'admin' && String(user.googleSub || '') !== sub) {
-    return res.status(403).json({ error: '管理者アカウントへのGoogle連携は許可されていません' });
+    return res.status(403).json({
+      error: '管理者アカウントはGoogleログイン非対応です。管理者専用ログイン画面へ移動します。',
+      code: 'ADMIN_PASSWORD_LOGIN_REQUIRED',
+      adminLoginPath: ADMIN_SECRET_PATH,
+    });
   }
 
   const isNewUser = !user;
@@ -2139,7 +2299,7 @@ app.post('/api/auth/google', async (req, res) => {
     is_premium: premiumEnabled,
     premiumEnabled,
   });
-});
+}));
 
 app.post('/api/auth/logout', (req, res) => {
   const user = getSessionUser(req);
@@ -2198,7 +2358,7 @@ app.post('/api/progress', (req, res) => {
   res.json(currentUser.progress);
 });
 
-app.post('/api/generate-question', async (req, res) => {
+app.post('/api/generate-question', withAsync(async (req, res) => {
   const {
     level = 'beginner',
     style = 'short',
@@ -2292,9 +2452,9 @@ app.post('/api/generate-question', async (req, res) => {
     console.error(`${provider} generation failed:`, error.message);
     res.status(500).json({ error: 'Failed to generate question' });
   }
-});
+}));
 
-app.post('/api/score-answer', async (req, res) => {
+app.post('/api/score-answer', withAsync(async (req, res) => {
   const {
     prompt,
     situation = '',
@@ -2410,7 +2570,7 @@ app.post('/api/score-answer', async (req, res) => {
     console.error(`${provider} scoring failed:`, error.message);
     res.status(500).json({ error: 'Failed to score answer' });
   }
-});
+}));
 
 app.get('/api/tts/status', (_req, res) => {
   const config = getExternalTtsConfig();
@@ -2427,7 +2587,7 @@ app.get('/api/tts/status', (_req, res) => {
   });
 });
 
-app.post('/api/tts/synthesize', async (req, res) => {
+app.post('/api/tts/synthesize', withAsync(async (req, res) => {
   const text = String(req.body?.text || '').trim();
   const requestedProvider = String(req.body?.provider || 'auto').trim();
 
@@ -2466,7 +2626,7 @@ app.post('/api/tts/synthesize', async (req, res) => {
     console.error('Cloud TTS synthesis failed:', error.message);
     return res.status(500).json({ error: 'Cloud TTS synthesis failed' });
   }
-});
+}));
 
 app.get('/api/feedback', (_req, res) => {
   const feedback = readJson(FEEDBACK_FILE, []);
@@ -3031,6 +3191,26 @@ app.get('/api/admin/config-status', (req, res) => {
     auditLogFile: USER_AUDIT_LOG_FILE,
     auditLogConfigured: true,
   });
+});
+
+app.use((error, req, res, next) => {
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  const requestPath = String(req?.originalUrl || req?.url || '').trim();
+  console.error(`Unhandled route error at ${requestPath}:`, error?.message || error);
+  appendUserAuditLog({
+    action: 'server_error',
+    status: 'failed',
+    details: {
+      path: requestPath.slice(0, 180),
+      message: String(error?.message || 'unknown_error').slice(0, 240),
+    },
+    request: getRequestAuditMeta(req),
+  });
+
+  return res.status(500).json({ error: 'サーバー内部でエラーが発生しました' });
 });
 
 if (require.main === module) {
