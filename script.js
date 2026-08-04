@@ -2641,6 +2641,97 @@ function normalizeForJudgement(text) {
     .replace(/여요$/g, '여POL');
 }
 
+function splitKoreanSentences(text) {
+  const value = String(text || '').trim();
+  if (!value) return [];
+  return value
+    .split(/([.!?。！？\n])/)
+    .reduce((acc, part, index, arr) => {
+      if (index % 2 === 0) {
+        const punctuation = arr[index + 1] || '';
+        const sentence = `${part}${punctuation}`.trim();
+        if (sentence) acc.push(sentence);
+      }
+      return acc;
+    }, []);
+}
+
+function convertSentenceToCasual(sentence) {
+  let value = String(sentence || '').trim();
+  if (!value) return value;
+
+  value = value
+    .replace(/입니다\?$/g, '이야?')
+    .replace(/입니다$/g, '이야')
+    .replace(/이에요\?$/g, '이야?')
+    .replace(/이에요$/g, '이야')
+    .replace(/예요\?$/g, '야?')
+    .replace(/예요$/g, '야')
+    .replace(/했어요\?$/g, '했어?')
+    .replace(/했어요$/g, '했어')
+    .replace(/해요\?$/g, '해?')
+    .replace(/해요$/g, '해')
+    .replace(/있어요\?$/g, '있어?')
+    .replace(/있어요$/g, '있어')
+    .replace(/아요\?$/g, '아?')
+    .replace(/아요$/g, '아')
+    .replace(/어요\?$/g, '어?')
+    .replace(/어요$/g, '어')
+    .replace(/여요\?$/g, '여?')
+    .replace(/여요$/g, '여');
+
+  return value;
+}
+
+function convertSentenceToPolite(sentence) {
+  let value = String(sentence || '').trim();
+  if (!value) return value;
+  const original = value;
+
+  if (/[요?]$/.test(value) || /(습니다|습니까|입니다|입니까)\??$/.test(value)) {
+    return value;
+  }
+
+  value = value
+    .replace(/이야\?$/g, '이에요?')
+    .replace(/이야$/g, '이에요')
+    .replace(/야\?$/g, '예요?')
+    .replace(/야$/g, '예요')
+    .replace(/했어\?$/g, '했어요?')
+    .replace(/했어$/g, '했어요')
+    .replace(/있어\?$/g, '있어요?')
+    .replace(/있어$/g, '있어요')
+    .replace(/해\?$/g, '해요?')
+    .replace(/해$/g, '해요')
+    .replace(/아\?$/g, '아요?')
+    .replace(/아$/g, '아요')
+    .replace(/어\?$/g, '어요?')
+    .replace(/어$/g, '어요')
+    .replace(/여\?$/g, '여요?')
+    .replace(/여$/g, '여요');
+
+  return value === original ? original : value;
+}
+
+function buildToneExamples(baseText) {
+  const source = String(baseText || '').trim();
+  if (!source) {
+    return {
+      polite: '',
+      casual: '',
+    };
+  }
+
+  const sentences = splitKoreanSentences(source);
+  const polite = (sentences.length ? sentences : [source]).map(convertSentenceToPolite).join(' ');
+  const casual = (sentences.length ? sentences : [source]).map(convertSentenceToCasual).join(' ');
+
+  return {
+    polite: polite || source,
+    casual: casual || source,
+  };
+}
+
 function levenshteinDistance(a, b) {
   const s = String(a || '');
   const t = String(b || '');
@@ -2962,7 +3053,13 @@ async function evaluateAnswer() {
   feedbackStatus.textContent = status;
   feedbackStatus.className = `feedback-status ${statusClass}`;
   feedbackText.textContent = `採点: ${score}点`;
-  modelAnswerBox.innerHTML = `<strong>模範解答</strong><div>${modelAnswerText}</div>`;
+  const toneExamples = buildToneExamples(modelAnswerText || correctedText);
+  modelAnswerBox.innerHTML = [
+    '<strong>模範解答</strong>',
+    `<div>基本: ${modelAnswerText}</div>`,
+    `<div>敬語例: ${toneExamples.polite || modelAnswerText}</div>`,
+    `<div>ため口例: ${toneExamples.casual || modelAnswerText}</div>`,
+  ].join('');
   const grammarLine = currentPracticeMode === 'grammar'
     ? `\n\n文法チェック: ${grammarFeedback || (grammarUsed === false ? '指定文法の使用が確認できませんでした。' : '指定文法の使用は概ね確認できました。')}`
     : '';
